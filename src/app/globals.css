@@ -1,26 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --pitch: #2B8A4E;
+  --pitch-dk: #1F6E3D;
+  --ink: #16241c;
+  --blue: #2E6FE0;
+  --blue-dk: #0F3C8C;
+  --red: #E0463B;
+  --red-dk: #8E1F18;
+  --gold: #FFC531;
+  --gold-dk: #B07E00;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-pitch: var(--pitch);
+  --color-pitch-dk: var(--pitch-dk);
+  --color-ink: var(--ink);
+  --color-blue: var(--blue);
+  --color-gold: var(--gold);
+  --color-red: var(--red);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  overscroll-behavior: none;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: var(--ink);
+  background: radial-gradient(1200px 600px at 50% -10%, #eafaef, #dff0e4 40%, #cfe6d6);
+  min-height: 100dvh;
+}
+
+.btn-primary {
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  border-radius: 13px;
+  padding: 13px 24px;
+  font-size: 16px;
+  background: linear-gradient(180deg, #43c46e, #2B8A4E);
+  color: #fff;
+  box-shadow: 0 5px 0 #14502d, 0 8px 16px rgba(0,0,0,.2);
+  transition: transform .08s, box-shadow .08s;
+  display: inline-block;
+}
+
+.btn-primary:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #14502d;
+}
+
+canvas.grabbing {
+  cursor: grabbing;
 }
