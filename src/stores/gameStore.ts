@@ -1,7 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { PlayerProgress, SkillRatings, CompletedDrill, Achievement, GameMode, MatchConfig, WingerBounds } from "@/types/game";
+import type { PlayerProgress, SkillRatings, CompletedDrill, Achievement, GameMode, MatchConfig, WingerBounds, RulePreset } from "@/types/game";
 import { XP_TABLE, LEVEL_NAMES, WINGER_X_BOUNDS } from "@/engine/constants";
 
 interface GameStore {
@@ -22,6 +22,11 @@ interface GameStore {
   // winger zones
   wingerBounds: WingerBounds;
   setWingerBounds: (bounds: WingerBounds) => void;
+
+  // custom rule presets
+  customPresets: RulePreset[];
+  savePreset: (preset: RulePreset) => void;
+  deletePreset: (id: string) => void;
 
   // audio
   soundEnabled: boolean;
@@ -124,6 +129,19 @@ export const useGameStore = create<GameStore>()(
       wingerBounds: { lw: { ...WINGER_X_BOUNDS.lw }, rw: { ...WINGER_X_BOUNDS.rw } },
       setWingerBounds: (bounds) => set({ wingerBounds: bounds }),
 
+      customPresets: [],
+      savePreset: (preset) =>
+        set((s) => ({
+          customPresets: [
+            ...s.customPresets.filter((p) => p.id !== preset.id),
+            preset,
+          ],
+        })),
+      deletePreset: (id) =>
+        set((s) => ({
+          customPresets: s.customPresets.filter((p) => p.id !== id),
+        })),
+
       soundEnabled: true,
       toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
     }),
@@ -133,6 +151,7 @@ export const useGameStore = create<GameStore>()(
         progress: state.progress,
         soundEnabled: state.soundEnabled,
         wingerBounds: state.wingerBounds,
+        customPresets: state.customPresets,
       }),
     }
   )

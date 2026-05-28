@@ -226,12 +226,19 @@ export class TeamShapeEngine {
 
         const d = dist(p, o);
         if (d < minGap && d > 0) {
+          const pFrozen = p.frozenTimer && p.frozenTimer > 0;
+          const oFrozen = o.frozenTimer && o.frozenTimer > 0;
+          if (pFrozen && oFrozen) continue;
           const push = (minGap - d) * 0.5;
           const ang = Math.atan2(p.y - o.y, p.x - o.x);
-          p.x += Math.cos(ang) * push;
-          p.y += Math.sin(ang) * push;
-          o.x -= Math.cos(ang) * push;
-          o.y -= Math.sin(ang) * push;
+          if (!pFrozen) {
+            p.x += Math.cos(ang) * push;
+            p.y += Math.sin(ang) * push;
+          }
+          if (!oFrozen) {
+            o.x -= Math.cos(ang) * push;
+            o.y -= Math.sin(ang) * push;
+          }
         }
       }
     }

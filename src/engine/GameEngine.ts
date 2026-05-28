@@ -1,6 +1,6 @@
 import type {
   Player, Ball, GameState, Possession, Restart, Score,
-  MatchConfig, JoystickVector, PillState, Position,
+  MatchConfig, JoystickVector, PillState, Position, ZoneRule,
 } from "@/types/game";
 import {
   W, H, L, R, TOP, BOT, GX0, GX1, GOAL_W, ATT_THIRD, CONTACT,
@@ -36,7 +36,8 @@ export type EngineEvent =
   | { type: "matchEnd"; score: Score }
   | { type: "stateChange"; state: GameState }
   | { type: "actionUpdate"; canPass: boolean; canShoot: boolean }
-  | { type: "drill:objective"; objectiveId: string; value: number };
+  | { type: "drill:objective"; objectiveId: string; value: number }
+  | { type: "countdown"; value: "3" | "2" | "1" | "GO" | null };
 
 export class GameEngine {
   readonly W = W;
@@ -60,6 +61,9 @@ export class GameEngine {
 
   private deadTimer = 0;
   private restart: Restart | null = null;
+  private firstKickoff = true;
+  private countdownPhase: "3" | "2" | "1" | "GO" | null = null;
+  private countdownTimer = 0;
   private passCooldown = 0;
   private stealImmunity = 0;
   private recentLoser: Player | null = null;   // the specific player who just lost the ball
@@ -124,9 +128,35 @@ export class GameEngine {
     if (p === this.you || p.gk) return;
     const bounds = ROLE_BOUNDS[p.home.role];
     if (!bounds) return;
-    const yMin = depthToY(p.side, bounds.fyMax); // fyMax = furthest forward = smallest Y for "us"
-    const yMax = depthToY(p.side, bounds.fyMin); // fyMin = closest to own goal = largest Y for "us"
+    const yMin = depthToY(p.side, bounds.fyMax);
+    const yMax = depthToY(p.side, bounds.fyMin);
     p.y = clamp(p.y, Math.min(yMin, yMax), Math.max(yMin, yMax));
+  }
+
+  // Clamp player to any zone rules configured for this match
+  private clampToZoneRules(p: Player): void {
+    if (p.gk) return;
+    const rules = this.config.zoneRules;
+    if (!rules || rules.length === 0) return;
+
+    const roleKey = p === this.you
+      ? (this.config.userRole || "")
+      : p.id.replace("us-", "").replace("them-", "");
+
+    for (const rule of rules) {
+      if (rule.team !== p.side || rule.role !== roleKey) continue;
+
+      // Convert fractional bounds to screen coordinates
+      const screenXMin = L + (R - L) * rule.xMin;
+      const screenXMax = L + (R - L) * rule.xMax;
+      const screenYMin = depthToY(p.side, rule.yMax);
+      const screenYMax = depthToY(p.side, rule.yMin);
+      const yLo = Math.min(screenYMin, screenYMax);
+      const yHi = Math.max(screenYMin, screenYMax);
+
+      p.x = clamp(p.x, screenXMin, screenXMax);
+      p.y = clamp(p.y, yLo, yHi);
+    }
   }
 
   private kickoffPositions() {
@@ -209,8 +239,14 @@ export class GameEngine {
     this.paused = false;
     this.kickoffPositions();
     this.poss = "us";
-    this.setRestart({ type: "kickoff", team: "us", x: W / 2, y: H / 2 });
+    this.firstKickoff = true;
+    this.countdownPhase = "3";
+    this.countdownTimer = 60;
+    this.gstate = "dead";
+    this.ball.x = W / 2;
+    this.ball.y = H / 2;
     this.running = true;
+    this.emit({ type: "countdown", value: "3" });
     this.emitActionUpdate();
   }
 
@@ -242,11 +278,37 @@ export class GameEngine {
 
   get currentTacticId(): string { return this.config.tacticId || "possession"; }
   get currentOppTacticId(): string { return this.config.oppTacticId || "possession"; }
+  get zoneRules(): ZoneRule[] { return this.config.zoneRules || []; }
 
   // ---------- Update ----------
 
   update(dt: number) {
     if (!this.running || this.paused) return;
+
+    // Countdown phase: 3-2-1-GO before the first kickoff
+    if (this.countdownPhase) {
+      this.countdownTimer--;
+      if (this.countdownTimer <= 0) {
+        const next: Record<string, "2" | "1" | "GO" | null> = { "3": "2", "2": "1", "1": "GO" };
+        if (this.countdownPhase === "GO") {
+          this.countdownPhase = null;
+          this.emit({ type: "countdown", value: null });
+          this.firstKickoff = false;
+          this.setRestart({ type: "kickoff", team: "us", x: W / 2, y: H / 2 });
+          this.deadTimer = 0;
+        } else {
+          this.countdownPhase = next[this.countdownPhase]!;
+          this.countdownTimer = this.countdownPhase === "GO" ? 30 : 60;
+          this.emit({ type: "countdown", value: this.countdownPhase });
+        }
+      }
+      return;
+    }
+
+    // Tick frozen timers on all players
+    for (const p of [...this.teamUs, ...this.teamThem]) {
+      if (p.frozenTimer && p.frozenTimer > 0) p.frozenTimer--;
+    }
 
     if (this.gstate === "live") {
       this.keyMove();
@@ -331,7 +393,7 @@ export class GameEngine {
   private setRestart(r: Restart) {
     this.gstate = "dead";
     this.restart = r;
-    this.deadTimer = Math.round(70 / this.PACE);
+    this.deadTimer = r.type === "kickoff" ? 120 : Math.round(70 / this.PACE);
     this.youHasBall = false;
     this.ball.flying = false;
     this.ball.owner = null;
@@ -541,14 +603,17 @@ export class GameEngine {
     if (loser && loser !== p && !loser.gk) {
       this.recentLoser = loser;
       this.recentLoserTimer = Math.round(120 / Math.max(0.5, this.PACE));
-      // Push loser away so they don't immediately re-contest
+      // Freeze the loser in place for 2 seconds
+      loser.frozenTimer = 120;
+      // Push loser well clear so the carrier has space to dribble away
       const pushAng = Math.atan2(loser.y - p.y, loser.x - p.x);
-      loser.x += Math.cos(pushAng) * 25;
-      loser.y += Math.sin(pushAng) * 25;
+      loser.x = clamp(loser.x + Math.cos(pushAng) * 45, L, R);
+      loser.y = clamp(loser.y + Math.sin(pushAng) * 45, TOP, BOT);
       loser.backoff = Math.round(90 / Math.max(0.5, this.PACE));
     }
 
     this.giveBall(p);
+    this.stealImmunity = 90;
     this.passCooldown = Math.round(18 / this.PACE);
     this.emitPill(p.side === "us" ? "Your ball" : "Reds attacking", p.side);
   }
@@ -578,7 +643,12 @@ export class GameEngine {
   }
 
   private availability(p: { x: number; y: number; side: "us" | "them"; gk?: boolean }, from: Position & { side?: string }): number {
-    if (p.gk) return 0;
+    if (p.gk) {
+      const lane = clamp(this.laneClear(p.x, p.y, from.x, from.y, p.side) / 26, 0, 1);
+      const d = dist(p, from);
+      const range = d < 55 ? d / 55 : d > 400 ? 0.1 : 1;
+      return clamp(lane * 0.6 + range * 0.4, 0, 0.7);
+    }
     const open = clamp(this.nearestEnemy(p.x, p.y, p.side) / 70, 0, 1);
     const lane = clamp(this.laneClear(p.x, p.y, from.x, from.y, p.side) / 26, 0, 1);
     const d = dist(p, from);
@@ -590,6 +660,7 @@ export class GameEngine {
   // ---------- Player input ----------
 
   private keyMove() {
+    if (this.you.frozenTimer && this.you.frozenTimer > 0) return;
     const sp = (this.youHasBall ? 2.9 : 3.6) * this.PACE;
     let dx = 0, dy = 0;
     if (this.keys["arrowup"]) dy--;
@@ -610,10 +681,12 @@ export class GameEngine {
         this.you.face = Math.atan2(dy, dx);
       }
     }
+    this.clampToZoneRules(this.you);
   }
 
   handleDrag(fieldX: number, fieldY: number) {
     if (!this.running) return;
+    if (this.you.frozenTimer && this.you.frozenTimer > 0) return;
     const nx = clamp(fieldX, 8, W - 8);
     const ny = clamp(fieldY, 8, H - 8);
     const ddx = nx - this.you.x;
@@ -623,6 +696,7 @@ export class GameEngine {
     }
     this.you.x = nx;
     this.you.y = ny;
+    this.clampToZoneRules(this.you);
   }
 
   canDrag(fieldX: number, fieldY: number): boolean {
@@ -635,6 +709,7 @@ export class GameEngine {
     let best: Player | null = null, d = 1e9;
     for (const p of arr) {
       if (p.gk || p === this.you) continue;
+      if (p.frozenTimer && p.frozenTimer > 0) continue;
       const dd = dist(p, this.ball);
       if (dd < d) { d = dd; best = p; }
     }
@@ -649,6 +724,7 @@ export class GameEngine {
 
     for (const m of arr) {
       if (m === this.you || m.gk) continue;
+      if (m.frozenTimer && m.frozenTimer > 0) continue;
 
       // ===== AI CARRIER: dribble toward goal, avoiding defenders =====
       if (m === carrier) {
@@ -660,6 +736,7 @@ export class GameEngine {
         let closestDist = 1e9, closestDx = 0, closestDy = 0;
         for (const e of en) {
           if (e.gk) continue;
+          if (e.frozenTimer && e.frozenTimer > 0) continue;
           const dd = dist(e, m);
           if (dd < 80) nearbyEnemies++;
           if (dd < closestDist) { closestDist = dd; closestDx = m.x - e.x; closestDy = m.y - e.y; }
@@ -800,6 +877,7 @@ export class GameEngine {
       }
 
       this.clampToRoleBounds(m);
+      this.clampToZoneRules(m);
       m.x = clamp(m.x, L, R);
     }
 
@@ -816,8 +894,9 @@ export class GameEngine {
     );
     teamShape.enforceSpacing(arr, spacingCtx);
     for (const m of arr) {
-      if (m !== this.you && !m.gk) {
+      if (m !== this.you && !m.gk && !(m.frozenTimer && m.frozenTimer > 0)) {
         this.clampToRoleBounds(m);
+        this.clampToZoneRules(m);
         m.x = clamp(m.x, L, R);
       }
     }
@@ -974,7 +1053,7 @@ export class GameEngine {
   // Check if player m is among the N closest outfield players to the ball in their team
   private isNthClosestToBall(m: Player, arr: Player[], n: number): boolean {
     const dists = arr
-      .filter(p => p !== this.you && !p.gk)
+      .filter(p => p !== this.you && !p.gk && !(p.frozenTimer && p.frozenTimer > 0))
       .map(p => ({ p, d: dist(p, this.ball) }))
       .sort((a, b) => a.d - b.d);
     const idx = dists.findIndex(e => e.p === m);
@@ -1019,6 +1098,13 @@ export class GameEngine {
     if (this.recentLoserTimer > 0) this.recentLoserTimer--;
     if (this.recentLoserTimer <= 0) this.recentLoser = null;
 
+    // Steal immunity: carrier can't be tackled right after winning the ball
+    if (this.stealImmunity > 0) {
+      this.stealImmunity--;
+      this.lastCarrierPos = { p: carrier, x: carrier.x, y: carrier.y };
+      return;
+    }
+
     const mv = this.carrierMoveDir(carrier);
     const defSide = carrier.side === "us" ? "them" : "us";
     const defenders = [...(defSide === "us" ? this.teamUs : this.teamThem)];
@@ -1028,8 +1114,8 @@ export class GameEngine {
 
     for (const dq of defenders) {
       if (dq.gk) continue;
-      // The recent loser CANNOT steal the ball back — this is the key fix
       if (dq === this.recentLoser) continue;
+      if (dq.frozenTimer && dq.frozenTimer > 0) continue;
       if (dist(dq, carrier) < CONTACT && this.isFrontTackle(dq, carrier, mv)) {
         this.winBall(dq);
         this.lastCarrierPos = null;
@@ -1284,9 +1370,16 @@ export class GameEngine {
   private moveBall() {
     if (!this.ball.flying) {
       if (this.ball.owner) {
-        // Ball sits in front of the carrier, in their facing direction
-        this.ball.x = this.ball.owner.x + Math.cos(this.ball.owner.face) * 12;
-        this.ball.y = this.ball.owner.y + Math.sin(this.ball.owner.face) * 12;
+        const targetX = this.ball.owner.x + Math.cos(this.ball.owner.face) * 12;
+        const targetY = this.ball.owner.y + Math.sin(this.ball.owner.face) * 12;
+        // Right after a steal, lerp the ball to the new carrier to avoid a visual pop
+        if (this.stealImmunity > 60) {
+          this.ball.x += (targetX - this.ball.x) * 0.3;
+          this.ball.y += (targetY - this.ball.y) * 0.3;
+        } else {
+          this.ball.x = targetX;
+          this.ball.y = targetY;
+        }
       }
       return;
     }
@@ -1321,6 +1414,7 @@ export class GameEngine {
 
     for (const p of pool) {
       if (p.gk) continue;
+      if (p.frozenTimer && p.frozenTimer > 0) continue;
       if (Math.hypot(p.x - this.ball.x, p.y - this.ball.y) < 16) {
         this.ball.flying = false;
         this.ball.onArrive = null;
@@ -1403,13 +1497,15 @@ export class GameEngine {
     const targets = [...this.mates, gk];
 
     const PASS_CONE = Math.PI * 0.45; // ~81 degrees total cone
+    const GK_CONE = Math.PI * 0.7;   // wider cone for back-pass to keeper
     let best: Player | null = null, bestScore = -1;
     for (const mt of targets) {
+      const cone = mt.gk ? GK_CONE : PASS_CONE;
       const ang = Math.atan2(mt.y - this.you.y, mt.x - this.you.x);
       const off = angDiff(ang, this.you.face);
-      if (off > PASS_CONE) continue;
+      if (off > cone) continue;
       const av = this.availability(mt, this.you);
-      const aim = 1 - off / PASS_CONE;
+      const aim = 1 - off / cone;
       const sc = av * 0.5 + aim * 0.5;
       if (sc > bestScore) { bestScore = sc; best = mt; }
     }

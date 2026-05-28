@@ -17,6 +17,7 @@ export interface Player {
   isUser?: boolean;
   backoff?: number;
   holdT?: number;
+  frozenTimer?: number;
   home: RoleConfig;
 }
 
@@ -70,6 +71,7 @@ export interface MatchConfig {
   userRole?: string;
   tacticId?: string;     // YOUR team's tactic
   oppTacticId?: string;  // opponent's tactic
+  zoneRules?: ZoneRule[];
 }
 
 // Goalkick defensive setups — where the opposition positions on our goalkick
@@ -172,6 +174,26 @@ export interface Achievement {
 export interface WingerBounds {
   lw: { min: number; max: number };
   rw: { min: number; max: number };
+}
+
+export interface ZoneRule {
+  id: string;
+  team: "us" | "them";
+  role: string;
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+  label: string;
+  color: string;
+}
+
+export interface RulePreset {
+  id: string;
+  name: string;
+  description: string;
+  builtin?: boolean;
+  rules: Omit<ZoneRule, "id">[];
 }
 
 export type GameMode = "match" | "drill" | "free-play";

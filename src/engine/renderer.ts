@@ -1,4 +1,4 @@
-import type { Player, Ball } from "@/types/game";
+import type { Player, Ball, ZoneRule } from "@/types/game";
 import type { GameEngine } from "./GameEngine";
 import { W, H, L, R, TOP, BOT, GX0, GX1, THIRD_1_Y, THIRD_2_Y } from "./constants";
 
@@ -7,11 +7,63 @@ export function renderFrame(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   drawPitch(ctx, engine.showBuildoutLines);
   if (!engine.you) return;
   if (engine.showZoneEditor) drawWingerZones(ctx, engine);
+  drawZoneRules(ctx, engine);
   drawPassLane(ctx, engine);
   drawKeepers(ctx, engine);
   drawOutfield(ctx, engine);
   drawYou(ctx, engine);
   drawBall(ctx, engine);
+  if ((engine as any).countdownPhase) drawCountdown(ctx, (engine as any).countdownPhase);
+}
+
+function depthToY(side: "us" | "them", depth: number): number {
+  return side === "us" ? (BOT - (BOT - TOP) * depth) : (TOP + (BOT - TOP) * depth);
+}
+
+function drawZoneRules(ctx: CanvasRenderingContext2D, engine: GameEngine) {
+  const rules = engine.zoneRules;
+  if (!rules || rules.length === 0) return;
+
+  ctx.save();
+  for (const rule of rules) {
+    const x0 = L + (R - L) * rule.xMin;
+    const x1 = L + (R - L) * rule.xMax;
+    const y0 = depthToY(rule.team, rule.yMax);
+    const y1 = depthToY(rule.team, rule.yMin);
+    const yLo = Math.min(y0, y1);
+    const yHi = Math.max(y0, y1);
+    const w = x1 - x0;
+    const h = yHi - yLo;
+
+    const c = rule.team === "us" ? "46,111,224" : "224,70,59";
+    ctx.fillStyle = `rgba(${c},.10)`;
+    ctx.fillRect(x0, yLo, w, h);
+    ctx.strokeStyle = `rgba(${c},.55)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 5]);
+    ctx.strokeRect(x0, yLo, w, h);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = `rgba(${c},.75)`;
+    ctx.font = "bold 10px Nunito, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(rule.label, x0 + w / 2, yLo + 13);
+  }
+  ctx.restore();
+}
+
+function drawCountdown(ctx: CanvasRenderingContext2D, phase: "3" | "2" | "1" | "GO") {
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,.45)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = phase === "GO" ? "900 72px Fredoka, sans-serif" : "900 96px Fredoka, sans-serif";
+  ctx.shadowColor = "rgba(0,0,0,.5)";
+  ctx.shadowBlur = 18;
+  ctx.fillText(phase, W / 2, H / 2);
+  ctx.restore();
 }
 
 function drawPitch(ctx: CanvasRenderingContext2D, buildoutLines = false) {
@@ -130,13 +182,26 @@ function drawKeepers(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   playerNumber(ctx, gkUs.x, gkUs.y, gkUs.number);
 }
 
+function drawFrozenRing(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, 17, 0, Math.PI * 2);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(140,220,255,.85)";
+  ctx.setLineDash([5, 4]);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawOutfield(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const p of engine.opps) {
+    if (p.frozenTimer && p.frozenTimer > 0) drawFrozenRing(ctx, p.x, p.y);
     dot(ctx, p.x, p.y, 12, "#E0463B", "#8E1F18", 2);
     arrow(ctx, p, 12, "rgba(142,31,24,.9)");
     playerNumber(ctx, p.x, p.y, p.number);
   }
   for (const p of engine.mates) {
+    if (p.frozenTimer && p.frozenTimer > 0) drawFrozenRing(ctx, p.x, p.y);
     dot(ctx, p.x, p.y, 12, "#2E6FE0", "#0F3C8C", 2);
     arrow(ctx, p, 12, "rgba(15,60,140,.9)");
     playerNumber(ctx, p.x, p.y, p.number);
@@ -145,6 +210,9 @@ function drawOutfield(ctx: CanvasRenderingContext2D, engine: GameEngine) {
 
 function drawYou(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   const { you } = engine;
+  if (you.frozenTimer && you.frozenTimer > 0) {
+    drawFrozenRing(ctx, you.x, you.y);
+  }
   ctx.save();
   ctx.beginPath();
   ctx.arc(you.x, you.y, 18, 0, Math.PI * 2);
