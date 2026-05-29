@@ -176,6 +176,18 @@ export interface WingerBounds {
   rw: { min: number; max: number };
 }
 
+// When a zone rule is active. Rules with no condition (or "always") apply every
+// frame — backward-compatible with the original always-on behavior. The others
+// let you layer different boundaries on the same player depending on who has the
+// ball and where it is.
+export type ZoneCondition =
+  | "always"         // applies every frame (default)
+  | "attacking"      // this rule's team has possession
+  | "defending"      // this rule's team does NOT have possession
+  | "ball_own_half"  // ball is in this team's defensive half
+  | "ball_opp_half"  // ball is in this team's attacking half
+  | "carrier_is";    // a specific player (carrierTeam + carrierRole) has the ball
+
 export interface ZoneRule {
   id: string;
   team: "us" | "them";
@@ -186,6 +198,11 @@ export interface ZoneRule {
   yMax: number;
   label: string;
   color: string;
+  when?: ZoneCondition; // omitted = "always"
+  // Only used when when === "carrier_is": which player must hold the ball for
+  // this rule to be active.
+  carrierTeam?: "us" | "them";
+  carrierRole?: string;
 }
 
 export interface RulePreset {

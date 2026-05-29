@@ -133,18 +133,59 @@ export class GameEngine {
     p.y = clamp(p.y, Math.min(yMin, yMax), Math.max(yMin, yMax));
   }
 
+  // The specific role key for a player ("lw", "rw", "hold", "fwd", ...).
+  // Player.role is the coarse role type; rules key off the specific slot, so we
+  // recover it from the user config or the encoded id (us-lw / them-fwd).
+  private roleKeyOf(p: Player): string {
+    if (p === this.you) return this.config.userRole || "";
+    return p.id.replace("us-", "").replace("them-", "");
+  }
+
+  // Is a zone rule's condition active right now, from the rule's team's POV?
+  private zoneRuleActive(rule: ZoneRule): boolean {
+    const when = rule.when ?? "always";
+    if (when === "always") return true;
+
+    const teamHasBall = this.poss === rule.team;
+    if (when === "attacking") return teamHasBall;
+    if (when === "defending") return !teamHasBall;
+
+    // Carrier-identity conditions: a specific player (by team + role) has the ball.
+    // carrierTeam/carrierRole are set on the rule alongside `when`.
+    if (when === "carrier_is") {
+      const owner = this.ball.owner;
+      if (!owner || owner.gk) return false;
+      return owner.side === rule.carrierTeam
+        && this.roleKeyOf(owner) === rule.carrierRole;
+    }
+
+    // Ball half, relative to this team. depthToY maps depth 0.5 to the halfway
+    // line for either side, so compare the ball's Y against that midpoint.
+    const halfwayY = depthToY(rule.team, 0.5);
+    const ballInOwnHalf = rule.team === "us"
+      ? this.ball.y > halfwayY   // us defends the bottom; larger Y = own half
+      : this.ball.y < halfwayY;  // them defends the top; smaller Y = own half
+    if (when === "ball_own_half") return ballInOwnHalf;
+    if (when === "ball_opp_half") return !ballInOwnHalf;
+
+    return true;
+  }
+
   // Clamp player to any zone rules configured for this match
   private clampToZoneRules(p: Player): void {
     if (p.gk) return;
     const rules = this.config.zoneRules;
     if (!rules || rules.length === 0) return;
 
-    const roleKey = p === this.you
-      ? (this.config.userRole || "")
-      : p.id.replace("us-", "").replace("them-", "");
+    const roleKey = this.roleKeyOf(p);
 
-    for (const rule of rules) {
+    // Last matching active rule wins: row order is priority. Scanning in reverse
+    // and clamping to the first hit means exactly ONE box governs the player each
+    // frame — two non-overlapping layers can never fight over their position.
+    for (let i = rules.length - 1; i >= 0; i--) {
+      const rule = rules[i];
       if (rule.team !== p.side || rule.role !== roleKey) continue;
+      if (!this.zoneRuleActive(rule)) continue;
 
       // Convert fractional bounds to screen coordinates
       const screenXMin = L + (R - L) * rule.xMin;
@@ -156,6 +197,7 @@ export class GameEngine {
 
       p.x = clamp(p.x, screenXMin, screenXMax);
       p.y = clamp(p.y, yLo, yHi);
+      return; // winner found — ignore lower-priority rules for this player
     }
   }
 
@@ -279,6 +321,12 @@ export class GameEngine {
   get currentTacticId(): string { return this.config.tacticId || "possession"; }
   get currentOppTacticId(): string { return this.config.oppTacticId || "possession"; }
   get zoneRules(): ZoneRule[] { return this.config.zoneRules || []; }
+  // Public for the renderer: is this rule currently governing its player?
+  isZoneRuleActive(rule: ZoneRule): boolean { return this.zoneRuleActive(rule); }
+  // Replace the whole rule set live (used when the UI edits/removes rules).
+  setZoneRules(rules: ZoneRule[]) {
+    this.config.zoneRules = rules;
+  }
 
   // ---------- Update ----------
 

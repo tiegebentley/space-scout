@@ -1,6 +1,23 @@
-import type { Player, Ball, ZoneRule } from "@/types/game";
+import type { Player, Ball, ZoneRule, ZoneCondition } from "@/types/game";
 import type { GameEngine } from "./GameEngine";
 import { W, H, L, R, TOP, BOT, GX0, GX1, THIRD_1_Y, THIRD_2_Y } from "./constants";
+
+const CONDITION_LABEL: Record<Exclude<ZoneCondition, "always" | "carrier_is">, string> = {
+  attacking: "ATK",
+  defending: "DEF",
+  ball_own_half: "ball own ½",
+  ball_opp_half: "ball opp ½",
+};
+
+function conditionTag(rule: ZoneRule): string {
+  const when = rule.when;
+  if (!when || when === "always") return "";
+  if (when === "carrier_is") {
+    const who = rule.carrierTeam === "us" ? "our" : "their";
+    return `  [${who} ${rule.carrierRole ?? "?"} has ball]`;
+  }
+  return `  [${CONDITION_LABEL[when]}]`;
+}
 
 export function renderFrame(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   ctx.clearRect(0, 0, W, H);
@@ -35,19 +52,25 @@ function drawZoneRules(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     const w = x1 - x0;
     const h = yHi - yLo;
 
+    // Conditional rules dim out when their condition isn't currently met, so you
+    // can see at a glance which layer is governing each player this frame.
+    const active = engine.isZoneRuleActive(rule);
+    const a = active ? 1 : 0.28;
+
     const c = rule.team === "us" ? "46,111,224" : "224,70,59";
-    ctx.fillStyle = `rgba(${c},.10)`;
+    ctx.fillStyle = `rgba(${c},${0.10 * a})`;
     ctx.fillRect(x0, yLo, w, h);
-    ctx.strokeStyle = `rgba(${c},.55)`;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 5]);
+    ctx.strokeStyle = `rgba(${c},${0.6 * a})`;
+    ctx.lineWidth = active ? 2.5 : 1.5;
+    ctx.setLineDash(active ? [8, 5] : [3, 4]);
     ctx.strokeRect(x0, yLo, w, h);
     ctx.setLineDash([]);
 
-    ctx.fillStyle = `rgba(${c},.75)`;
+    const cond = conditionTag(rule);
+    ctx.fillStyle = `rgba(${c},${0.8 * a})`;
     ctx.font = "bold 10px Nunito, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(rule.label, x0 + w / 2, yLo + 13);
+    ctx.fillText(rule.label + cond, x0 + w / 2, yLo + 13);
   }
   ctx.restore();
 }

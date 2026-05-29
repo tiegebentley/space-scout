@@ -1,12 +1,13 @@
 "use client";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { MatchView } from "@/components/game/MatchView";
+import { ZonePitchEditor } from "@/components/game/ZonePitchEditor";
 import { useGameStore } from "@/stores/gameStore";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS } from "@/engine/constants";
 import { ALL_TACTICS } from "@/engine/tactics/presets";
-import type { ZoneRule, RulePreset } from "@/types/game";
+import type { ZoneRule, RulePreset, ZoneCondition } from "@/types/game";
 
 const FORMATS = [
   { id: "3v3" as const, label: "3v3", desc: "Fast & tight, great for learning" },
@@ -85,6 +86,20 @@ const BUILTIN_PRESETS: RulePreset[] = [
       { team: "them", role: "rw", xMin: 0.45, xMax: 0.85, yMin: 0.10, yMax: 0.90, label: "Red RW", color: ZONE_COLORS.them },
     ],
   },
+  {
+    id: "push-and-recover",
+    name: "Push & Recover (conditional)",
+    description: "#6 pushes up when WE attack, drops deep when they have it — two zones, one player",
+    builtin: true,
+    rules: [
+      // Same player (#6), two layers that swap based on possession.
+      { team: "us", role: "hold", xMin: 0.20, xMax: 0.80, yMin: 0.40, yMax: 0.75, label: "Blue #6 high", color: ZONE_COLORS.us, when: "attacking" },
+      { team: "us", role: "hold", xMin: 0.15, xMax: 0.85, yMin: 0.0, yMax: 0.35, label: "Blue #6 deep", color: ZONE_COLORS.us, when: "defending" },
+      // #9 holds the line when attacking, recovers to midfield when defending.
+      { team: "us", role: "fwd", xMin: 0.20, xMax: 0.80, yMin: 0.60, yMax: 1.0, label: "Blue #9 line", color: ZONE_COLORS.us, when: "attacking" },
+      { team: "us", role: "fwd", xMin: 0.25, xMax: 0.75, yMin: 0.35, yMax: 0.70, label: "Blue #9 recover", color: ZONE_COLORS.us, when: "defending" },
+    ],
+  },
 ];
 
 function hydrateRules(rules: Omit<ZoneRule, "id">[]): ZoneRule[] {
@@ -97,6 +112,13 @@ export default function PlayPage() {
   const [selectedPresetId, setSelectedPresetId] = useState<string>("none");
   const [zonesOpen, setZonesOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  // Draw tool: what the next box drawn on the pitch applies to.
+  const [drawTeam, setDrawTeam] = useState<"us" | "them">("us");
+  const [drawRole, setDrawRole] = useState<string>("");
+  const [drawWhen, setDrawWhen] = useState<ZoneCondition>("always");
+  const [drawCarrierTeam, setDrawCarrierTeam] = useState<"us" | "them">("them");
+  const [drawCarrierRole, setDrawCarrierRole] = useState<string>("");
   const setMatchConfig = useGameStore((s) => s.setMatchConfig);
   const matchConfig = useGameStore((s) => s.matchConfig);
   const customPresets = useGameStore((s) => s.customPresets);
@@ -155,7 +177,24 @@ export default function PlayPage() {
     };
     setZoneRules((prev) => [...prev, rule]);
     setSelectedPresetId("custom");
+    setZonesOpen(true); // reveal the rule list so the new row is editable
   }, [roleKeys]);
+
+  // A box was drawn on the static pitch — same shape as a slider-built rule, so
+  // it drops straight into the shared list and shows up in the editor below.
+  const handleDrawnRule = useCallback((rule: ZoneRule) => {
+    setZoneRules((prev) => [...prev, rule]);
+    setSelectedPresetId("custom");
+    setSelectedRuleId(rule.id);
+    setZonesOpen(true);
+  }, []);
+
+  // Keep the draw-tool role pickers valid for the current format.
+  useEffect(() => {
+    const outfield = roleKeys.filter((k) => k !== "gk");
+    if (!outfield.includes(drawRole)) setDrawRole(selectedRole && outfield.includes(selectedRole) ? selectedRole : outfield[0]);
+    if (!outfield.includes(drawCarrierRole)) setDrawCarrierRole(outfield[0]);
+  }, [roleKeys, drawRole, drawCarrierRole, selectedRole]);
 
   const updateZoneRule = useCallback((id: string, patch: Partial<ZoneRule>) => {
     setZoneRules((prev) =>
@@ -314,6 +353,85 @@ export default function PlayPage() {
         <div className="mb-6">
           <p className="text-xs font-extrabold tracking-wide text-[#5d6f63] mb-2.5">ZONE RULES</p>
 
+          {/* Draw-template controls — what the next box drawn on the pitch is for */}
+          <div className="rounded-xl border-2 border-[rgba(20,60,35,.1)] bg-[#f8faf8] p-2.5 mb-2 space-y-2">
+            <p className="text-[10px] font-extrabold tracking-wide text-[#5d6f63]">DRAW A ZONE</p>
+            <div className="flex gap-2">
+              {/* Team */}
+              <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)]">
+                <button
+                  onClick={() => setDrawTeam("us")}
+                  className={clsx("px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
+                    drawTeam === "us" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}
+                >BLUE</button>
+                <button
+                  onClick={() => setDrawTeam("them")}
+                  className={clsx("px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
+                    drawTeam === "them" ? "bg-[#E0463B] text-white" : "bg-white text-[#5d6f63]")}
+                >RED</button>
+              </div>
+              {/* Role */}
+              <select
+                value={drawRole}
+                onChange={(e) => setDrawRole(e.target.value)}
+                className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+              >
+                {roleKeys.filter((k) => k !== "gk").map((k) => (
+                  <option key={k} value={k}>#{JERSEY_NUMBERS[k]} {ROLE_LABELS[k] || k}</option>
+                ))}
+              </select>
+            </div>
+            {/* Condition */}
+            <select
+              value={drawWhen}
+              onChange={(e) => setDrawWhen(e.target.value as ZoneCondition)}
+              className="w-full rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+            >
+              <option value="always">Always applies</option>
+              <option value="attacking">When we attack</option>
+              <option value="defending">When we defend</option>
+              <option value="ball_own_half">When ball is in our half</option>
+              <option value="ball_opp_half">When ball is in their half</option>
+              <option value="carrier_is">When a specific player has the ball…</option>
+            </select>
+            {drawWhen === "carrier_is" && (
+              <div className="flex gap-2">
+                <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)]">
+                  <button
+                    onClick={() => setDrawCarrierTeam("us")}
+                    className={clsx("px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
+                      drawCarrierTeam === "us" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}
+                  >OUR</button>
+                  <button
+                    onClick={() => setDrawCarrierTeam("them")}
+                    className={clsx("px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
+                      drawCarrierTeam === "them" ? "bg-[#E0463B] text-white" : "bg-white text-[#5d6f63]")}
+                  >THEIR</button>
+                </div>
+                <select
+                  value={drawCarrierRole}
+                  onChange={(e) => setDrawCarrierRole(e.target.value)}
+                  className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+                >
+                  {roleKeys.filter((k) => k !== "gk").map((k) => (
+                    <option key={k} value={k}>#{JERSEY_NUMBERS[k]} {ROLE_LABELS[k] || k}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* The static pitch — draw boxes here */}
+            <ZonePitchEditor
+              format={currentFormat}
+              rules={zoneRules}
+              selectedId={selectedRuleId}
+              template={{ team: drawTeam, role: drawRole || roleKeys.filter((k) => k !== "gk")[0], when: drawWhen, carrierTeam: drawCarrierTeam, carrierRole: drawCarrierRole || roleKeys.filter((k) => k !== "gk")[0] }}
+              onAddRule={handleDrawnRule}
+              onUpdateRule={updateZoneRule}
+              onSelectRule={setSelectedRuleId}
+            />
+          </div>
+
           {/* Preset dropdown */}
           <select
             value={selectedPresetId}
@@ -453,6 +571,66 @@ export default function PlayPage() {
                       {Math.round(rule.yMin * 100)}–{Math.round(rule.yMax * 100)}%
                     </span>
                   </div>
+
+                  {/* When this zone applies — layer rules by possession / ball position */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-extrabold text-[#5d6f63] w-8">When</span>
+                    <select
+                      value={rule.when ?? "always"}
+                      onChange={(e) => {
+                        const when = e.target.value as ZoneCondition;
+                        // Seed carrier fields the first time "specific player" is picked.
+                        const patch: Partial<ZoneRule> = { when };
+                        if (when === "carrier_is") {
+                          patch.carrierTeam = rule.carrierTeam ?? "them";
+                          patch.carrierRole = rule.carrierRole ?? roleKeys[0];
+                        }
+                        updateZoneRule(rule.id, patch);
+                      }}
+                      className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+                    >
+                      <option value="always">Always</option>
+                      <option value="attacking">We have the ball (attacking)</option>
+                      <option value="defending">They have the ball (defending)</option>
+                      <option value="ball_own_half">Ball in our half</option>
+                      <option value="ball_opp_half">Ball in their half</option>
+                      <option value="carrier_is">A specific player has the ball…</option>
+                    </select>
+                  </div>
+
+                  {/* Carrier picker — only when "specific player has the ball" */}
+                  {rule.when === "carrier_is" && (
+                    <div className="flex items-center gap-2 pl-9">
+                      <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)]">
+                        <button
+                          onClick={() => updateZoneRule(rule.id, { carrierTeam: "us" })}
+                          className={clsx(
+                            "px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
+                            (rule.carrierTeam ?? "them") === "us" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]"
+                          )}
+                        >OUR</button>
+                        <button
+                          onClick={() => updateZoneRule(rule.id, { carrierTeam: "them" })}
+                          className={clsx(
+                            "px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
+                            (rule.carrierTeam ?? "them") === "them" ? "bg-[#E0463B] text-white" : "bg-white text-[#5d6f63]"
+                          )}
+                        >THEIR</button>
+                      </div>
+                      <select
+                        value={rule.carrierRole ?? roleKeys[0]}
+                        onChange={(e) => updateZoneRule(rule.id, { carrierRole: e.target.value })}
+                        className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+                      >
+                        {roleKeys.map((k) => (
+                          <option key={k} value={k}>
+                            #{JERSEY_NUMBERS[k]} {ROLE_LABELS[k] || k}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[9px] font-bold text-[#5d6f63]">has the ball</span>
+                    </div>
+                  )}
                 </div>
               ))}
 

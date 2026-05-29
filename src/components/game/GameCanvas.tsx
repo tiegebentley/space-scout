@@ -32,11 +32,13 @@ export function GameCanvas({ engineRef, canvasRef, onWingerBoundsChange, classNa
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const engine = engineRef.current;
-    if (!canvas || !engine) return;
+    if (!canvas) return;
 
     const onDown = (e: MouseEvent | TouchEvent) => {
-      if (!engine.running) return;
+      // Read the engine live each time: it's created in a later effect and may
+      // be re-created (React Strict Mode), so a captured reference goes stale.
+      const engine = engineRef.current;
+      if (!engine || !engine.running) return;
       const p = toField(e);
       if (!p) return;
 
@@ -59,6 +61,8 @@ export function GameCanvas({ engineRef, canvasRef, onWingerBoundsChange, classNa
     };
 
     const onMove = (e: MouseEvent | TouchEvent) => {
+      const engine = engineRef.current;
+      if (!engine) return;
       const p = toField(e);
       if (!p || !engine.running) return;
 
