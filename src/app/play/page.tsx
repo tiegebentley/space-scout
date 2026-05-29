@@ -430,6 +430,29 @@ export default function PlayPage() {
               onUpdateRule={updateZoneRule}
               onSelectRule={setSelectedRuleId}
             />
+
+            {/* Save drawn zones as a preset — right here so boxes persist without
+                scrolling down to the separate save field. Only shown once zones
+                exist and they aren't already a saved/built-in preset. */}
+            {zoneRules.length > 0 && (selectedPresetId === "custom" || selectedPresetId === "none") && (
+              <div className="flex gap-2 pt-1">
+                <input
+                  type="text"
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSavePreset(); }}
+                  placeholder={`Save these ${zoneRules.length} zone${zoneRules.length !== 1 ? "s" : ""} as a preset…`}
+                  className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2.5 py-1.5 text-xs font-bold bg-white"
+                />
+                <button
+                  onClick={handleSavePreset}
+                  disabled={!saveName.trim()}
+                  className="rounded-lg px-3 py-1.5 text-[10px] font-extrabold bg-[#2B8A4E] text-white cursor-pointer disabled:opacity-40 disabled:cursor-default whitespace-nowrap"
+                >
+                  Save preset
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Preset dropdown */}
@@ -653,25 +676,6 @@ export default function PlayPage() {
             </button>
           </div>
 
-          {/* Save as custom preset */}
-          {zoneRules.length > 0 && (selectedPresetId === "custom" || selectedPresetId === "none") && (
-            <div className="flex gap-2 mt-2">
-              <input
-                type="text"
-                value={saveName}
-                onChange={(e) => setSaveName(e.target.value)}
-                placeholder="Preset name..."
-                className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2.5 py-1.5 text-xs font-bold bg-white"
-              />
-              <button
-                onClick={handleSavePreset}
-                disabled={!saveName.trim()}
-                className="rounded-lg px-3 py-1.5 text-[10px] font-extrabold bg-[#2B8A4E] text-white cursor-pointer disabled:opacity-40 disabled:cursor-default"
-              >
-                Save preset
-              </button>
-            </div>
-          )}
         </div>
 
         <button
