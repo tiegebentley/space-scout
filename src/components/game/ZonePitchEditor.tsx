@@ -92,19 +92,24 @@ export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule
       const p = toField(e);
       if (!p) return;
 
-      // 1) If the selected rule's box is grabbed by an edge/corner/body, edit it.
       const sel = rulesRef.current.find((r) => r.id === selectedRef.current);
+
+      // LOCKED MODE — a rule is selected: the pitch only edits THAT box.
+      // Clicking its edge/corner/body resizes/moves it; clicking anywhere else
+      // (another box or empty space) does nothing. You must press a rule's
+      // "Select" button in the list to switch, or deselect, before drawing.
       if (sel) {
         const h = hitTestRuleBox(sel, p.x, p.y);
         if (h) {
           editRef.current = { id: sel.id, handle: h, startX: p.x, startY: p.y, orig: { ...sel } };
           canvas.classList.add("grabbing");
           e.preventDefault();
-          return;
         }
+        // No selection change and no new-box draw while locked.
+        return;
       }
 
-      // 2) Clicking any other box selects it (and starts a move).
+      // UNLOCKED MODE — nothing selected: clicking a box selects + grabs it.
       // Search topmost-first so later (visually on top) boxes win.
       for (let i = rulesRef.current.length - 1; i >= 0; i--) {
         const r = rulesRef.current[i];
@@ -118,7 +123,7 @@ export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule
         }
       }
 
-      // 3) Empty space → start drawing a new box.
+      // Empty space → start drawing a new box.
       drawingRef.current = true;
       draftRef.current = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
       canvas.classList.add("grabbing");
@@ -165,10 +170,21 @@ export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule
         return;
       }
 
-      // Hover cursor feedback over the selected box.
+      // Hover cursor feedback.
       const sel = rulesRef.current.find((r) => r.id === selectedRef.current);
-      const h = sel ? hitTestRuleBox(sel, p.x, p.y) : null;
-      canvas.style.cursor = handleCursor(h);
+      if (sel) {
+        // Locked: resize/move cursor only over the selected box; plain arrow
+        // everywhere else (you can't select or draw until you deselect).
+        const h = hitTestRuleBox(sel, p.x, p.y);
+        canvas.style.cursor = h ? handleCursor(h) : "default";
+      } else {
+        // Unlocked: crosshair to draw, pointer over any box to select it.
+        let overBox = false;
+        for (let i = rulesRef.current.length - 1; i >= 0; i--) {
+          if (hitTestRuleBox(rulesRef.current[i], p.x, p.y)) { overBox = true; break; }
+        }
+        canvas.style.cursor = overBox ? "pointer" : "crosshair";
+      }
     };
 
     const onUp = () => {
@@ -222,11 +238,15 @@ export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule
         ref={canvasRef}
         width={W}
         height={H}
-        className="block w-full h-auto touch-none cursor-crosshair"
+        className="block w-full h-auto touch-none"
       />
       <p className="text-[10px] font-bold text-[#5d6f63] bg-[#f3f7f2] px-2 py-1.5 text-center">
-        Drag empty space to draw <span className="font-extrabold">{label}</span>&apos;s zone
-        {template.when !== "always" ? " (conditional)" : ""} · click a box to select, drag its edges to resize
+        {selectedId ? (
+          <>Editing one zone — drag its edges to resize. Press <span className="font-extrabold">Select</span> on another rule to switch, or deselect to draw a new one.</>
+        ) : (
+          <>Drag empty space to draw <span className="font-extrabold">{label}</span>&apos;s zone
+          {template.when !== "always" ? " (conditional)" : ""} · click a box to select, drag its edges to resize</>
+        )}
       </p>
     </div>
   );
