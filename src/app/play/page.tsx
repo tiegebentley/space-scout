@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { MatchView } from "@/components/game/MatchView";
 import { ZonePitchEditor } from "@/components/game/ZonePitchEditor";
 import { useGameStore } from "@/stores/gameStore";
@@ -109,6 +109,12 @@ function hydrateRules(rules: Omit<ZoneRule, "id">[]): ZoneRule[] {
 export default function PlayPage() {
   const [selecting, setSelecting] = useState(true);
   const [zoneRules, setZoneRules] = useState<ZoneRule[]>([]);
+  // Undo/redo history for zone edits. Each entry is a full snapshot of zoneRules.
+  // Kept as one object so the stack + pointer move atomically. Continuous edits
+  // (slider/pitch drags) are coalesced via `coalesceKey` so a whole drag
+  // collapses into one undo step instead of one per pixel.
+  const [hist, setHist] = useState<{ stack: ZoneRule[][]; index: number }>({ stack: [[]], index: 0 });
+  const coalesceKey = useRef<string | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("none");
   const [zonesOpen, setZonesOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
@@ -135,18 +141,69 @@ export default function PlayPage() {
     [customPresets]
   );
 
+  // Apply a new zoneRules state and record it in history.
+  //  - `key === null` (default): a discrete edit → always its own undo step.
+  //  - `key === <string>`: a continuous edit → consecutive commits sharing the
+  //    same key replace the top history entry (coalesce) so a drag = one step.
+  const commit = useCallback((updater: ZoneRule[] | ((prev: ZoneRule[]) => ZoneRule[]), key: string | null = null) => {
+    setZoneRules((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const coalesce = key !== null && coalesceKey.current === key;
+      setHist((h) => {
+        if (coalesce) {
+          // Replace the current top entry — stays the same undo step.
+          const stack = h.stack.slice(0, h.index + 1);
+          stack[h.index] = next;
+          return { stack, index: h.index };
+        }
+        // New discrete step: drop any redo tail, push, advance pointer.
+        const stack = h.stack.slice(0, h.index + 1);
+        stack.push(next);
+        return { stack, index: stack.length - 1 };
+      });
+      coalesceKey.current = key;
+      return next;
+    });
+  }, []);
+
+  const canUndo = hist.index > 0;
+  const canRedo = hist.index < hist.stack.length - 1;
+
+  const undo = useCallback(() => {
+    setHist((h) => {
+      if (h.index <= 0) return h;
+      const ni = h.index - 1;
+      setZoneRules(h.stack[ni]);
+      coalesceKey.current = null;
+      setSelectedPresetId("custom");
+      return { ...h, index: ni };
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    setHist((h) => {
+      if (h.index >= h.stack.length - 1) return h;
+      const ni = h.index + 1;
+      setZoneRules(h.stack[ni]);
+      coalesceKey.current = null;
+      setSelectedPresetId("custom");
+      return { ...h, index: ni };
+    });
+  }, []);
+
   const selectPreset = useCallback((presetId: string) => {
     setSelectedPresetId(presetId);
+    setSelectedRuleId(null);
     if (presetId === "none") {
-      setZoneRules([]);
+      commit([]);
       return;
     }
     const preset = [...BUILTIN_PRESETS, ...customPresets].find((p) => p.id === presetId);
     if (preset) {
-      setZoneRules(hydrateRules(preset.rules));
+      commit(hydrateRules(preset.rules));
       setZonesOpen(true);
     }
-  }, [customPresets]);
+  }, [customPresets, commit]);
 
   const handleSavePreset = useCallback(() => {
     const name = saveName.trim();
@@ -175,19 +232,36 @@ export default function PlayPage() {
       label: `${team === "us" ? "Blue" : "Red"} ${ROLE_LABELS[defaultRole] || defaultRole}`,
       color: ZONE_COLORS[team],
     };
-    setZoneRules((prev) => [...prev, rule]);
+    commit((prev) => [...prev, rule]);
     setSelectedPresetId("custom");
+    setSelectedRuleId(rule.id);
     setZonesOpen(true); // reveal the rule list so the new row is editable
-  }, [roleKeys]);
+  }, [roleKeys, commit]);
 
   // A box was drawn on the static pitch — same shape as a slider-built rule, so
   // it drops straight into the shared list and shows up in the editor below.
   const handleDrawnRule = useCallback((rule: ZoneRule) => {
-    setZoneRules((prev) => [...prev, rule]);
+    commit((prev) => [...prev, rule]);
     setSelectedPresetId("custom");
     setSelectedRuleId(rule.id);
     setZonesOpen(true);
-  }, []);
+  }, [commit]);
+
+  // Keyboard undo/redo on the setup screen.
+  useEffect(() => {
+    if (!selecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      // Don't hijack undo while typing in the preset-name field etc.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selecting, undo, redo]);
 
   // Keep the draw-tool role pickers valid for the current format.
   useEffect(() => {
@@ -197,18 +271,30 @@ export default function PlayPage() {
   }, [roleKeys, drawRole, drawCarrierRole, selectedRole]);
 
   const updateZoneRule = useCallback((id: string, patch: Partial<ZoneRule>) => {
-    setZoneRules((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        const updated = { ...r, ...patch };
-        if (patch.role || patch.team) {
-          updated.label = `${updated.team === "us" ? "Blue" : "Red"} ${ROLE_LABELS[updated.role] || updated.role}`;
-          updated.color = ZONE_COLORS[updated.team];
-        }
-        return updated;
-      })
+    // Coalesce key = which rule + which fields. A slider drag or pitch resize
+    // fires the same shape repeatedly → collapses into one undo step. Changing
+    // slider/field starts a new step.
+    const key = `${id}:${Object.keys(patch).sort().join(",")}`;
+    commit(
+      (prev) =>
+        prev.map((r) => {
+          if (r.id !== id) return r;
+          const updated = { ...r, ...patch };
+          if (patch.role || patch.team) {
+            updated.label = `${updated.team === "us" ? "Blue" : "Red"} ${ROLE_LABELS[updated.role] || updated.role}`;
+            updated.color = ZONE_COLORS[updated.team];
+          }
+          return updated;
+        }),
+      key
     );
     setSelectedPresetId("custom");
+  }, [commit]);
+
+  // Marks the end of a continuous gesture (drag/slide) so the next one starts a
+  // fresh undo step rather than coalescing into the previous one.
+  const endEdit = useCallback(() => {
+    coalesceKey.current = null;
   }, []);
 
   // Select a rule from the list → highlight its box on the pitch editor above
@@ -221,12 +307,13 @@ export default function PlayPage() {
   }, []);
 
   const removeZoneRule = useCallback((id: string) => {
-    setZoneRules((prev) => {
+    commit((prev) => {
       const next = prev.filter((r) => r.id !== id);
       if (next.length === 0) setSelectedPresetId("none");
       return next;
     });
-  }, []);
+    setSelectedRuleId((cur) => (cur === id ? null : cur));
+  }, [commit]);
 
   if (!selecting) {
     return (
@@ -364,7 +451,28 @@ export default function PlayPage() {
 
           {/* Draw-template controls — what the next box drawn on the pitch is for */}
           <div id="zone-pitch-editor" className="rounded-xl border-2 border-[rgba(20,60,35,.1)] bg-[#f8faf8] p-2.5 mb-2 space-y-2 scroll-mt-4">
-            <p className="text-[10px] font-extrabold tracking-wide text-[#5d6f63]">DRAW A ZONE</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-extrabold tracking-wide text-[#5d6f63]">DRAW A ZONE</p>
+              {/* Undo / redo for zone edits */}
+              <div className="flex gap-1">
+                <button
+                  onClick={undo}
+                  disabled={!canUndo}
+                  title="Undo (Ctrl+Z)"
+                  className="rounded-md px-2 py-1 text-[10px] font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer hover:bg-[#f3f7f2] disabled:opacity-35 disabled:cursor-default transition-colors"
+                >
+                  ↶ Undo
+                </button>
+                <button
+                  onClick={redo}
+                  disabled={!canRedo}
+                  title="Redo (Ctrl+Shift+Z)"
+                  className="rounded-md px-2 py-1 text-[10px] font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer hover:bg-[#f3f7f2] disabled:opacity-35 disabled:cursor-default transition-colors"
+                >
+                  ↷ Redo
+                </button>
+              </div>
+            </div>
             <div className="flex gap-2">
               {/* Team */}
               <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)]">
@@ -438,6 +546,7 @@ export default function PlayPage() {
               onAddRule={handleDrawnRule}
               onUpdateRule={updateZoneRule}
               onSelectRule={setSelectedRuleId}
+              onEndEdit={endEdit}
             />
 
             {/* Save drawn zones as a preset — right here so boxes persist without
@@ -545,42 +654,47 @@ export default function PlayPage() {
                       {isSelected ? "✎ Editing" : "Select"}
                     </button>
 
-                    {/* Team toggle */}
-                    <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)]">
-                      <button
-                        onClick={() => updateZoneRule(rule.id, { team: "us" })}
-                        className={clsx(
-                          "px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
-                          rule.team === "us" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]"
-                        )}
-                      >BLUE</button>
-                      <button
-                        onClick={() => updateZoneRule(rule.id, { team: "them" })}
-                        className={clsx(
-                          "px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
-                          rule.team === "them" ? "bg-[#E0463B] text-white" : "bg-white text-[#5d6f63]"
-                        )}
-                      >RED</button>
+                    {/* Team toggle + role select — locked unless this row is selected */}
+                    <div className={clsx("flex items-center gap-2 flex-1 transition-opacity", !isSelected && "opacity-40 pointer-events-none")} aria-disabled={!isSelected}>
+                      <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)]">
+                        <button
+                          onClick={() => updateZoneRule(rule.id, { team: "us" })}
+                          className={clsx(
+                            "px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
+                            rule.team === "us" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]"
+                          )}
+                        >BLUE</button>
+                        <button
+                          onClick={() => updateZoneRule(rule.id, { team: "them" })}
+                          className={clsx(
+                            "px-2.5 py-1 text-[10px] font-extrabold cursor-pointer transition-colors",
+                            rule.team === "them" ? "bg-[#E0463B] text-white" : "bg-white text-[#5d6f63]"
+                          )}
+                        >RED</button>
+                      </div>
+                      <select
+                        value={rule.role}
+                        onChange={(e) => updateZoneRule(rule.id, { role: e.target.value })}
+                        className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+                      >
+                        {roleKeys.map((k) => (
+                          <option key={k} value={k}>
+                            #{JERSEY_NUMBERS[k]} {ROLE_LABELS[k] || k}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-
-                    {/* Role select */}
-                    <select
-                      value={rule.role}
-                      onChange={(e) => updateZoneRule(rule.id, { role: e.target.value })}
-                      className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
-                    >
-                      {roleKeys.map((k) => (
-                        <option key={k} value={k}>
-                          #{JERSEY_NUMBERS[k]} {ROLE_LABELS[k] || k}
-                        </option>
-                      ))}
-                    </select>
 
                     <button
                       onClick={() => removeZoneRule(rule.id)}
-                      className="w-6 h-6 rounded-md bg-white border border-[rgba(20,60,35,.15)] grid place-items-center text-xs font-bold text-[#E0463B] cursor-pointer hover:bg-[#fef0ef]"
+                      title="Remove this zone"
+                      className="shrink-0 w-6 h-6 rounded-md bg-white border border-[rgba(20,60,35,.15)] grid place-items-center text-xs font-bold text-[#E0463B] cursor-pointer hover:bg-[#fef0ef]"
                     >&times;</button>
                   </div>
+
+                  {/* All bound/condition editors — locked unless this row is selected.
+                      Click "Select" to edit; keeps the list readable but tamper-proof. */}
+                  <div className={clsx("space-y-2 transition-opacity", !isSelected && "opacity-40 pointer-events-none select-none")} aria-disabled={!isSelected}>
 
                   {/* Horizontal bounds */}
                   <div className="flex items-center gap-2">
@@ -590,12 +704,14 @@ export default function PlayPage() {
                       type="range" min="0" max="100" step="1"
                       value={Math.round(rule.xMin * 100)}
                       onChange={(e) => updateZoneRule(rule.id, { xMin: +e.target.value / 100 })}
+                      onMouseUp={endEdit} onTouchEnd={endEdit} onKeyUp={endEdit}
                       className="flex-1"
                     />
                     <input
                       type="range" min="0" max="100" step="1"
                       value={Math.round(rule.xMax * 100)}
                       onChange={(e) => updateZoneRule(rule.id, { xMax: +e.target.value / 100 })}
+                      onMouseUp={endEdit} onTouchEnd={endEdit} onKeyUp={endEdit}
                       className="flex-1"
                     />
                     <label className="text-[9px] font-bold text-[#5d6f63]">R</label>
@@ -612,12 +728,14 @@ export default function PlayPage() {
                       type="range" min="0" max="100" step="1"
                       value={Math.round(rule.yMin * 100)}
                       onChange={(e) => updateZoneRule(rule.id, { yMin: +e.target.value / 100 })}
+                      onMouseUp={endEdit} onTouchEnd={endEdit} onKeyUp={endEdit}
                       className="flex-1"
                     />
                     <input
                       type="range" min="0" max="100" step="1"
                       value={Math.round(rule.yMax * 100)}
                       onChange={(e) => updateZoneRule(rule.id, { yMax: +e.target.value / 100 })}
+                      onMouseUp={endEdit} onTouchEnd={endEdit} onKeyUp={endEdit}
                       className="flex-1"
                     />
                     <label className="text-[9px] font-bold text-[#5d6f63]">Opp</label>
@@ -685,6 +803,7 @@ export default function PlayPage() {
                       <span className="text-[9px] font-bold text-[#5d6f63]">has the ball</span>
                     </div>
                   )}
+                  </div>{/* /lockable editors */}
                 </div>
                 );
               })}

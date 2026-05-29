@@ -24,11 +24,12 @@ interface Props {
   onAddRule: (rule: ZoneRule) => void;
   onUpdateRule: (id: string, patch: Partial<ZoneRule>) => void;
   onSelectRule: (id: string | null) => void;
+  onEndEdit?: () => void;
 }
 
 const MIN_PX = 18;
 
-export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule, onUpdateRule, onSelectRule }: Props) {
+export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule, onUpdateRule, onSelectRule, onEndEdit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const draftRef = useRef<DraftRect | null>(null);
   const drawingRef = useRef(false);
@@ -172,7 +173,7 @@ export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule
 
     const onUp = () => {
       canvas.classList.remove("grabbing");
-      if (editRef.current) { editRef.current = null; return; }
+      if (editRef.current) { editRef.current = null; onEndEdit?.(); return; }
       if (!drawingRef.current) return;
       drawingRef.current = false;
       const d = draftRef.current;
@@ -213,7 +214,7 @@ export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("touchend", onUp);
     };
-  }, [toField, paint, rectToBounds, onAddRule, onUpdateRule, onSelectRule]);
+  }, [toField, paint, rectToBounds, onAddRule, onUpdateRule, onSelectRule, onEndEdit]);
 
   return (
     <div className="rounded-xl overflow-hidden border-2 border-[rgba(20,60,35,.12)]">
