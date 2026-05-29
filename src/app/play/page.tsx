@@ -211,6 +211,15 @@ export default function PlayPage() {
     setSelectedPresetId("custom");
   }, []);
 
+  // Select a rule from the list → highlight its box on the pitch editor above
+  // (the selected box renders solid + bold and becomes the draggable/resizable one).
+  // Clicking the already-selected row clears the selection.
+  const onSelectRuleRow = useCallback((id: string) => {
+    setSelectedRuleId((cur) => (cur === id ? null : id));
+    // Bring the pitch editor into view so the highlighted box is visible.
+    document.getElementById("zone-pitch-editor")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, []);
+
   const removeZoneRule = useCallback((id: string) => {
     setZoneRules((prev) => {
       const next = prev.filter((r) => r.id !== id);
@@ -354,7 +363,7 @@ export default function PlayPage() {
           <p className="text-xs font-extrabold tracking-wide text-[#5d6f63] mb-2.5">ZONE RULES</p>
 
           {/* Draw-template controls — what the next box drawn on the pitch is for */}
-          <div className="rounded-xl border-2 border-[rgba(20,60,35,.1)] bg-[#f8faf8] p-2.5 mb-2 space-y-2">
+          <div id="zone-pitch-editor" className="rounded-xl border-2 border-[rgba(20,60,35,.1)] bg-[#f8faf8] p-2.5 mb-2 space-y-2 scroll-mt-4">
             <p className="text-[10px] font-extrabold tracking-wide text-[#5d6f63]">DRAW A ZONE</p>
             <div className="flex gap-2">
               {/* Team */}
@@ -507,13 +516,35 @@ export default function PlayPage() {
 
           {zonesOpen && zoneRules.length > 0 && (
             <div className="space-y-3">
-              {zoneRules.map((rule) => (
+              {zoneRules.map((rule) => {
+                const isSelected = selectedRuleId === rule.id;
+                return (
                 <div
                   key={rule.id}
-                  className="rounded-xl border-2 p-3 space-y-2"
-                  style={{ borderColor: rule.color + "55", backgroundColor: rule.color + "08" }}
+                  className={clsx("rounded-xl border-2 p-3 space-y-2 transition-shadow", isSelected && "ring-2 ring-offset-1")}
+                  style={{
+                    borderColor: rule.color + (isSelected ? "" : "55"),
+                    backgroundColor: rule.color + (isSelected ? "14" : "08"),
+                    // @ts-expect-error CSS custom prop for the Tailwind ring color
+                    "--tw-ring-color": rule.color,
+                  }}
                 >
                   <div className="flex items-center gap-2">
+                    {/* Select — highlights this rule's box on the pitch above and makes it the draggable one */}
+                    <button
+                      onClick={() => onSelectRuleRow(rule.id)}
+                      title={isSelected ? "Editing this zone — drag its box on the pitch" : "Select to edit this zone's box on the pitch"}
+                      className={clsx(
+                        "shrink-0 rounded-md px-2 py-1 text-[10px] font-extrabold cursor-pointer transition-colors border",
+                        isSelected
+                          ? "text-white border-transparent"
+                          : "bg-white text-[#5d6f63] border-[rgba(20,60,35,.15)] hover:bg-[#f3f7f2]"
+                      )}
+                      style={isSelected ? { backgroundColor: rule.color } : undefined}
+                    >
+                      {isSelected ? "✎ Editing" : "Select"}
+                    </button>
+
                     {/* Team toggle */}
                     <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)]">
                       <button
@@ -655,7 +686,8 @@ export default function PlayPage() {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
             </div>
           )}
