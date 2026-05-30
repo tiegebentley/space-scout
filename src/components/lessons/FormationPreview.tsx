@@ -29,14 +29,17 @@ interface Props {
   userRole?: string;
   zoneRules?: ZoneRule[];
   // interactive authoring:
-  placeMode?: PlaceMode;
+  placeMode?: PlaceMode | `rule:${string}`;
   restartPoint?: { x: number; y: number } | null;
   objectiveZone?: EngineRect | null;
+  selectedRuleId?: string | null;
   onPlaceRestart?: (x: number, y: number) => void;
   onDrawZone?: (rect: EngineRect) => void;
+  // Draw a zone-rule box; bounds are fractional 0..1 (xMin/xMax/yMin/yMax).
+  onDrawRule?: (id: string, bounds: { xMin: number; xMax: number; yMin: number; yMax: number }) => void;
 }
 
-export function FormationPreview({ format, userRole, zoneRules, placeMode, restartPoint, objectiveZone, onPlaceRestart, onDrawZone }: Props) {
+export function FormationPreview({ format, userRole, zoneRules, placeMode, restartPoint, objectiveZone, selectedRuleId, onPlaceRestart, onDrawZone, onDrawRule }: Props) {
   const formation = FORMATIONS[format] || FORMATIONS["5v5"];
   const roles = Object.keys(formation);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -62,11 +65,13 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
     return { x: Math.round(x), y: Math.round(y) };
   };
 
+  const ruleId = typeof placeMode === "string" && placeMode.startsWith("rule:") ? placeMode.slice(5) : null;
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (placeMode === "restart" && onPlaceRestart) {
       const p = toEngine(e.clientX, e.clientY);
       onPlaceRestart(p.x, p.y);
-    } else if (placeMode === "zone" && onDrawZone) {
+    } else if ((placeMode === "zone" && onDrawZone) || (ruleId && onDrawRule)) {
       const start = toEngine(e.clientX, e.clientY);
       const move = (ev: PointerEvent) => {
         const p = toEngine(ev.clientX, ev.clientY);
@@ -76,7 +81,17 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
         const p = toEngine(ev.clientX, ev.clientY);
         const rect = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) };
         setPreview(null);
-        if (rect.w > 30 && rect.h > 30) onDrawZone(rect);
+        if (rect.w > 30 && rect.h > 30) {
+          if (ruleId && onDrawRule) {
+            // engine/lab coords → fractional 0..1 against L..R / TOP..BOT.
+            const xMin = (rect.x - L) / (R - L), xMax = (rect.x + rect.w - L) / (R - L);
+            const yMin = (rect.y - TOP) / (BOT - TOP), yMax = (rect.y + rect.h - TOP) / (BOT - TOP);
+            onDrawRule(ruleId, {
+              xMin: Math.max(0, Math.min(1, xMin)), xMax: Math.max(0, Math.min(1, xMax)),
+              yMin: Math.max(0, Math.min(1, yMin)), yMax: Math.max(0, Math.min(1, yMax)),
+            });
+          } else if (onDrawZone) onDrawZone(rect);
+        }
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
       };
@@ -105,11 +120,15 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
       <rect x={VIEW_W / 2 - 130} y={VIEW_H - 116} width={260} height={110} fill="none" stroke="rgba(255,255,255,.55)" strokeWidth={3} />
       <BoardGoals />
 
-      {/* Boundaries / rules (us team) */}
-      {(zoneRules || []).filter((z) => z.team === "us").map((z) => {
+      {/* Boundaries / rules (both teams) — selected one is highlighted */}
+      {(zoneRules || []).map((z) => {
         const c1 = labToScreen(L + (R - L) * z.xMin, TOP + (BOT - TOP) * z.yMin);
         const c2 = labToScreen(L + (R - L) * z.xMax, TOP + (BOT - TOP) * z.yMax);
-        return <rect key={z.id} x={Math.min(c1.sx, c2.sx)} y={Math.min(c1.sy, c2.sy)} width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)} fill="rgba(46,111,224,.12)" stroke="rgba(46,111,224,.7)" strokeWidth={2} strokeDasharray="8 6" rx={8} />;
+        const blue = z.team === "us";
+        const sel = z.id === selectedRuleId;
+        return <rect key={z.id} x={Math.min(c1.sx, c2.sx)} y={Math.min(c1.sy, c2.sy)} width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)}
+          fill={blue ? "rgba(46,111,224,.12)" : "rgba(224,70,59,.12)"} stroke={blue ? "rgba(46,111,224,.8)" : "rgba(224,70,59,.8)"}
+          strokeWidth={sel ? 4 : 2} strokeDasharray="8 6" rx={8} />;
       })}
 
       {/* Objective zone (receive-in-zone) */}

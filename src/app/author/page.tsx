@@ -22,7 +22,7 @@ import { BUILTIN_PRESETS } from "@/data/zonePresets";
 const roleLabel = (r: string) => `#${JERSEY_NUMBERS[r] ?? "?"} ${ROLE_LABELS[r] ?? r}`;
 const OBJ_ROLES = ["gk", "hold", "lw", "rw", "fwd", "lcm", "rcm"];
 import type { BoardObject, Scenario, Zone, Lesson, Choice, InfoCard, LessonStep, ScenarioObjective } from "@/types/lessons";
-import type { ZoneRule, EngineRect } from "@/types/game";
+import type { ZoneRule, EngineRect, ZoneCondition, ZoneMovement, ZoneAction, ZoneOffBall } from "@/types/game";
 
 type Mode = "move" | "choice" | "arrow" | "info";
 // The three lesson modes a step can be.
@@ -57,6 +57,7 @@ interface DraftScenario {
   duration: number;          // match length (ms)
   aiDifficulty: "easy" | "medium" | "hard";
   forcedRestart: "" | "throwin" | "goalkick" | "kickoff" | "corner";
+  restartTeam: "us" | "them";   // which team starts in possession of the restart
   objType: ObjType;
   objTarget: number;
   objToRole: string;         // passCount: pass-to role; receiveInZone: receiver
@@ -79,7 +80,7 @@ function blankScenario(kind: StepKind = "instructional"): DraftScenario {
     liveTitle: kind === "game" ? "Now play a game" : "Try it live",
     liveBody: "", format: "5v5", userRole: "hold",
     oppTacticId: "possession", duration: 180000, aiDifficulty: "medium",
-    forcedRestart: "",
+    forcedRestart: "", restartTeam: "us",
     objType: "passCount", objTarget: 5, objToRole: "gk",
     objZone: null, restartPoint: null, zoneRules: [],
   };
@@ -144,7 +145,7 @@ function draftToStep(d: DraftScenario): LessonStep {
       matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules },
       objective: draftToObjective(d),
       scenarioSetup: d.forcedRestart
-        ? { forcedRestart: d.forcedRestart, ...(d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}) }
+        ? { forcedRestart: d.forcedRestart, restartTeam: d.restartTeam, ...(d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}) }
         : undefined,
     };
   }
@@ -198,6 +199,7 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.aiDifficulty = st.matchConfig.aiDifficulty ?? "medium";
       d.zoneRules = st.matchConfig.zoneRules ?? [];
       d.forcedRestart = st.scenarioSetup?.forcedRestart ?? "";
+      d.restartTeam = st.scenarioSetup?.restartTeam ?? "us";
       d.objType = st.objective.type;
       d.objTarget = st.objective.type === "keepPossession" ? st.objective.seconds
         : st.objective.type === "winBack" ? st.objective.withinSeconds
@@ -247,8 +249,10 @@ function AuthorEditor() {
   const [tool, setTool] = useState<AuthorTool>({ kind: "select" });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Interactive placing on the Scenario/Game field preview.
-  const [placeMode, setPlaceMode] = useState<"restart" | "zone" | null>(null);
-  useEffect(() => { setPlaceMode(null); }, [idx]); // clear when switching steps
+  // "rule:<id>" means drawing the box for that zone rule.
+  const [placeMode, setPlaceMode] = useState<"restart" | "zone" | `rule:${string}` | null>(null);
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  useEffect(() => { setPlaceMode(null); setSelectedRuleId(null); }, [idx]); // clear on step switch
   const [testLesson, setTestLesson] = useState<Lesson | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -316,6 +320,20 @@ function AuthorEditor() {
     const has = cur.answerIds.includes(id);
     patch({ answerIds: has ? cur.answerIds.filter((x) => x !== id) : [...cur.answerIds, id] });
   };
+
+  // ---- zone-rule editing (Scenario/Game) ----
+  const addRule = (team: "us" | "them") => {
+    const role = team === "us" ? "lw" : "lw";
+    const rule: ZoneRule = {
+      id: nid("zr"), team, role,
+      xMin: team === "us" ? 0.0 : 0.7, xMax: team === "us" ? 0.3 : 1.0, yMin: 0.1, yMax: 0.9,
+      label: `${team === "us" ? "Blue" : "Red"} ${role}`, color: team === "us" ? "rgb(46,111,224)" : "rgb(224,70,59)",
+    };
+    patch({ zoneRules: [...cur.zoneRules, rule] });
+    setSelectedRuleId(rule.id);
+  };
+  const updateRule = (id: string, p: Partial<ZoneRule>) => patch({ zoneRules: cur.zoneRules.map((r) => (r.id === id ? { ...r, ...p } : r)) });
+  const removeRule = (id: string) => { patch({ zoneRules: cur.zoneRules.filter((r) => r.id !== id) }); if (selectedRuleId === id) setSelectedRuleId(null); };
 
   // ---- scenario pager ----
   const addScenario = (kind: StepKind = "instructional") => { setScenarios([...scenarios, blankScenario(kind)]); setIdx(scenarios.length); setSelectedId(null); };
@@ -459,8 +477,66 @@ function AuthorEditor() {
         )}
       </select>
       <p className="text-[10px] text-[#5d6f63]">
-        {cur.zoneRules.length > 0 ? `${cur.zoneRules.length} rule${cur.zoneRules.length !== 1 ? "s" : ""} applied — shown on the field.` : "Build & save presets in Play; apply them here."}
+        {cur.zoneRules.length > 0 ? `${cur.zoneRules.length} rule${cur.zoneRules.length !== 1 ? "s" : ""} — shown on the field. Edit below or add your own.` : "Apply a preset above, or add your own rules below."}
       </p>
+
+      {/* Editable rule list (same controls as the game rule editor) */}
+      <div className="space-y-2">
+        {cur.zoneRules.map((rule) => {
+          const sel = selectedRuleId === rule.id;
+          return (
+            <div key={rule.id} className={clsx("rounded-lg border p-2 space-y-1.5", sel ? "border-[#FFD166] bg-[#fffaf0]" : "border-[rgba(20,60,35,.12)] bg-white")}>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setSelectedRuleId(sel ? null : rule.id)} className={clsx("rounded-md px-2 py-1 text-[10px] font-extrabold cursor-pointer border", sel ? "bg-[#FFD166] border-[#FFD166]" : "bg-white border-[rgba(20,60,35,.15)] text-[#5d6f63]")}>{sel ? "Editing" : "Select"}</button>
+                <div className="flex rounded-md overflow-hidden border border-[rgba(20,60,35,.15)] text-[10px] font-extrabold">
+                  <button onClick={() => updateRule(rule.id, { team: "us", color: "rgb(46,111,224)" })} className={clsx("px-2 py-1 cursor-pointer", rule.team === "us" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}>BLUE</button>
+                  <button onClick={() => updateRule(rule.id, { team: "them", color: "rgb(224,70,59)" })} className={clsx("px-2 py-1 cursor-pointer", rule.team === "them" ? "bg-[#E0463B] text-white" : "bg-white text-[#5d6f63]")}>RED</button>
+                </div>
+                <select value={rule.role} onChange={(e) => updateRule(rule.id, { role: e.target.value })} className="flex-1 rounded-md border border-[rgba(20,60,35,.15)] px-1.5 py-1 text-[11px] font-bold bg-white">
+                  {OBJ_ROLES.filter((r) => r !== "gk").map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                </select>
+                <button onClick={() => removeRule(rule.id)} className="shrink-0 w-6 h-6 rounded-md bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] text-xs font-bold cursor-pointer">×</button>
+              </div>
+              {sel && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <select value={rule.when ?? "always"} onChange={(e) => { const v = e.target.value as ZoneCondition; updateRule(rule.id, { when: v === "always" ? undefined : v }); }} className="rounded-md border border-[rgba(20,60,35,.15)] px-1.5 py-1 text-[11px] font-bold bg-white">
+                    <option value="always">Always applies</option>
+                    <option value="attacking">When we attack</option>
+                    <option value="defending">When we defend</option>
+                    <option value="ball_own_half">Ball in our half</option>
+                    <option value="ball_opp_half">Ball in their half</option>
+                  </select>
+                  <select value={rule.movement ?? "roam"} onChange={(e) => updateRule(rule.id, { movement: e.target.value as ZoneMovement })} className="rounded-md border border-[rgba(20,60,35,.15)] px-1.5 py-1 text-[11px] font-bold bg-white">
+                    <option value="roam">Roam the whole box</option>
+                    <option value="center">Hold the center</option>
+                    <option value="free">Free (box is a limit)</option>
+                  </select>
+                  <select value={rule.action ?? "default"} onChange={(e) => { const v = e.target.value as ZoneAction; updateRule(rule.id, { action: v === "default" ? undefined : v }); }} className="rounded-md border border-[rgba(20,60,35,.15)] px-1.5 py-1 text-[11px] font-bold bg-white">
+                    <option value="default">On ball: play normally</option>
+                    <option value="cross">On ball: cross to box</option>
+                    <option value="shoot">On ball: shoot on sight</option>
+                    <option value="dribble">On ball: dribble</option>
+                    <option value="recycle">On ball: keep it safe</option>
+                  </select>
+                  <select value={rule.offBall ?? "default"} onChange={(e) => { const v = e.target.value as ZoneOffBall; updateRule(rule.id, { offBall: v === "default" ? undefined : v }); }} className="rounded-md border border-[rgba(20,60,35,.15)] px-1.5 py-1 text-[11px] font-bold bg-white">
+                    <option value="default">Off ball: hold shape</option>
+                    <option value="hold_width">Off ball: stay wide</option>
+                    <option value="drop_deep">Off ball: drop deep</option>
+                  </select>
+                  <button onClick={() => setPlaceMode(placeMode === `rule:${rule.id}` ? null : `rule:${rule.id}`)}
+                    className={clsx("col-span-2 rounded-md px-2 py-1 text-[11px] font-extrabold cursor-pointer border", placeMode === `rule:${rule.id}` ? "bg-[#FFD166] border-[#FFD166]" : "bg-white border-[rgba(20,60,35,.15)]")}>
+                    {placeMode === `rule:${rule.id}` ? "Drag the field to draw the box…" : "▭ Draw this rule's box on the field"}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div className="flex gap-2">
+          <button onClick={() => addRule("us")} className="rounded-md px-2.5 py-1 text-[11px] font-extrabold bg-[#2E6FE0] text-white cursor-pointer">+ Blue rule</button>
+          <button onClick={() => addRule("them")} className="rounded-md px-2.5 py-1 text-[11px] font-extrabold bg-[#E0463B] text-white cursor-pointer">+ Red rule</button>
+        </div>
+      </div>
     </div>
   );
 
@@ -529,8 +605,10 @@ function AuthorEditor() {
                 placeMode={placeMode}
                 restartPoint={cur.restartPoint}
                 objectiveZone={cur.objType === "receiveInZone" ? cur.objZone : null}
+                selectedRuleId={selectedRuleId}
                 onPlaceRestart={(x, y) => { patch({ restartPoint: { x, y } }); setPlaceMode(null); toast("Restart point set"); }}
                 onDrawZone={(rect) => { patch({ objZone: rect }); setPlaceMode(null); toast("Objective zone set"); }}
+                onDrawRule={(id, b) => { updateRule(id, b); setPlaceMode(null); toast("Rule box drawn"); }}
               />
             )}
           </div>
@@ -552,13 +630,22 @@ function AuthorEditor() {
                     </select>
                   </label>
                   {cur.forcedRestart && (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setPlaceMode(placeMode === "restart" ? null : "restart")}
-                        className={clsx("rounded-lg px-2.5 py-1 text-[11px] font-extrabold cursor-pointer border", placeMode === "restart" ? "bg-[#FFD166] border-[#FFD166]" : cur.restartPoint ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]" : "bg-white border-[rgba(20,60,35,.15)]")}>
-                        {placeMode === "restart" ? "Click the field…" : cur.restartPoint ? "✓ Restart point set" : "⚽ Set restart point"}
-                      </button>
-                      {cur.restartPoint && <button onClick={() => patch({ restartPoint: null })} className="text-[11px] font-bold text-[#E0463B] cursor-pointer">clear</button>}
-                    </div>
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-[#5d6f63]">Taken by</span>
+                        <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[10px] font-extrabold">
+                          <button onClick={() => patch({ restartTeam: "us" })} className={clsx("px-3 py-1 cursor-pointer", cur.restartTeam === "us" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}>BLUE (you)</button>
+                          <button onClick={() => patch({ restartTeam: "them" })} className={clsx("px-3 py-1 cursor-pointer", cur.restartTeam === "them" ? "bg-[#E0463B] text-white" : "bg-white text-[#5d6f63]")}>RED</button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setPlaceMode(placeMode === "restart" ? null : "restart")}
+                          className={clsx("rounded-lg px-2.5 py-1 text-[11px] font-extrabold cursor-pointer border", placeMode === "restart" ? "bg-[#FFD166] border-[#FFD166]" : cur.restartPoint ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]" : "bg-white border-[rgba(20,60,35,.15)]")}>
+                          {placeMode === "restart" ? "Click the field…" : cur.restartPoint ? "✓ Restart point set" : "⚽ Set restart point"}
+                        </button>
+                        {cur.restartPoint && <button onClick={() => patch({ restartPoint: null })} className="text-[11px] font-bold text-[#E0463B] cursor-pointer">clear</button>}
+                      </div>
+                    </>
                   )}
                 </div>
                 <div className={GROUP}>
