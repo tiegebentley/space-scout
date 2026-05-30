@@ -263,9 +263,15 @@ export default function PlayPage() {
       setSourcePresetId(editingCustomPreset.id);
       flashSaved();
     } else {
-      // New (or edited built-in / free-draw) → needs a name.
+      // New (or edited built-in / free-draw) → needs a name. The name field is
+      // up in the editor block, so scroll it into view + focus it.
       setNamingNew(true);
       setZonesOpen(true);
+      requestAnimationFrame(() => {
+        const f = document.getElementById("preset-name-input");
+        f?.scrollIntoView({ behavior: "smooth", block: "center" });
+        (f as HTMLInputElement | null)?.focus();
+      });
     }
   }, [zoneRules, editingCustomPreset, savePreset, flashSaved]);
 
@@ -501,8 +507,7 @@ export default function PlayPage() {
 
           {/* Draw-template controls — what the next box drawn on the pitch is for */}
           <div id="zone-pitch-editor" className="rounded-xl border-2 border-[rgba(20,60,35,.1)] bg-[#f8faf8] p-2.5 mb-2 space-y-2 scroll-mt-4">
-            {/* Sticky so undo/redo/save stay reachable while scrolling the rule list below. */}
-            <div className="flex items-center justify-between sticky top-0 z-10 -mx-2.5 -mt-2.5 px-2.5 pt-2.5 pb-2 bg-[#f8faf8] rounded-t-xl border-b border-[rgba(20,60,35,.08)]">
+            <div className="flex items-center justify-between">
               <p className="text-[10px] font-extrabold tracking-wide text-[#5d6f63]">DRAW A ZONE</p>
               {/* Undo / redo / save for zone edits */}
               <div className="flex gap-1">
@@ -620,6 +625,7 @@ export default function PlayPage() {
             {zoneRules.length > 0 && (namingNew || (!editingCustomPreset && (selectedPresetId === "custom" || selectedPresetId === "none"))) && (
               <div className="flex gap-2 pt-1">
                 <input
+                  id="preset-name-input"
                   type="text"
                   value={saveName}
                   autoFocus={namingNew}
