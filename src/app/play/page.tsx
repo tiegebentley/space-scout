@@ -681,6 +681,19 @@ export default function PlayPage() {
                 </button>
               </div>
             )}
+
+            {/* When the drawn zones sit on top of an existing preset, the name
+                field above is hidden (Save overwrites silently). Offer a one-tap
+                "save these zones as a new preset" right here so drawn boxes can be
+                branched off without scrolling down to the bottom Save controls. */}
+            {zoneRules.length > 0 && overwriteName && !namingNew && (
+              <button
+                onClick={handleSaveAsNew}
+                className="block text-left text-[11px] font-bold text-[#2B8A4E] cursor-pointer hover:underline pt-0.5"
+              >
+                + Save these zones as a new preset…
+              </button>
+            )}
           </div>
 
           {/* Preset dropdown */}
