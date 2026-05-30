@@ -14,6 +14,12 @@ export const GX1 = W / 2 + GOAL_W / 2;
 export const ATT_THIRD = H * 0.36;
 export const CONTACT = 22;
 
+// Penalty box geometry — MUST match the box drawn in renderer (boxW/boxH).
+// Shots are only allowed from inside this area.
+export const BOX_W = 260;          // box width (px), centered on goal
+export const BOX_H = 70;           // box depth (px) out from the goal line
+export const BOX_HALF_W = BOX_W / 2;
+
 export interface RoleBounds {
   fyMin: number; // closest to own goal (0 = own goal line)
   fyMax: number; // furthest forward (1 = opp goal line)

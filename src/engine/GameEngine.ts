@@ -3,7 +3,7 @@ import type {
   MatchConfig, JoystickVector, PillState, Position, ZoneRule,
 } from "@/types/game";
 import {
-  W, H, L, R, TOP, BOT, GX0, GX1, GOAL_W, ATT_THIRD, CONTACT,
+  W, H, L, R, TOP, BOT, GX0, GX1, GOAL_W, ATT_THIRD, CONTACT, BOX_H, BOX_HALF_W,
   FORMATIONS, SPEED_MAP, ROLE_BOUNDS, THIRD_1_Y, THIRD_2_Y,
   GOALKICK_SETUPS, type GoalkickSetupDef,
   DEFAULT_USER_ROLE, JERSEY_NUMBERS, WINGER_X_BOUNDS,
