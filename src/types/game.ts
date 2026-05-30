@@ -49,6 +49,10 @@ export interface Ball {
   kind?: "pass" | "shot";
   targetPlayer?: Player | null;
   lastTouch: "us" | "them";
+  // The player who last kicked the ball into flight. `owner` is nulled the
+  // instant a pass/shot launches, so this preserves "who lost it" for the
+  // turnover freeze when an interception or loose ball flips possession.
+  launchedBy?: Player | null;
   onArrive: (() => void) | null;
 }
 

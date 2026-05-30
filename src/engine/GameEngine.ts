@@ -743,7 +743,13 @@ export class GameEngine {
   // `fromRestart` skips the turnover-freeze (kickoffs, throw-ins, goal kicks
   // aren't "losing the ball" — nobody should be penalised on a restart).
   protected giveBall(p: Player, fromRestart = false) {
-    const prev = this.ball.owner;
+    // Who lost it: the current owner, or — when the ball is in flight (a pass or
+    // shot nulls `owner` on launch) — whoever last kicked it. Without the
+    // fallback, an interception or loose-ball pickup reaches here with
+    // `owner === null` and the passer escapes the freeze. `launchedBy` is
+    // consumed here so a settled ball doesn't keep pointing at a stale loser.
+    const prev = this.ball.owner ?? this.ball.launchedBy ?? null;
+    this.ball.launchedBy = null;
     // Turnover rule: whenever possession changes to the OTHER team during open
     // play, the player who lost it pauses before they can engage again. This is
     // the single chokepoint for every possession change (tackle, interception,
@@ -1534,6 +1540,7 @@ export class GameEngine {
   private launchBall(from: Player, tx: number, ty: number, kind: "pass" | "shot", toPlayer?: Player | null) {
     this.ball.flying = true;
     this.ball.owner = null;
+    this.ball.launchedBy = from; // preserve the kicker for the turnover freeze
     this.ball.x = from.x;
     this.ball.y = from.y;
     this.ball.tx = tx;
