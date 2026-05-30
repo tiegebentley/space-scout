@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { LAB_PITCH } from "@/types/lessons";
-import type { BoardObject, Scenario, Zone } from "@/types/lessons";
+import type { BoardObject, Scenario } from "@/types/lessons";
 import { gradeMoveScenario, gradeArrowScenario } from "@/engine/scenarioGrader";
 import { labToScreen, screenToLab, VIEW_W, VIEW_H } from "./boardTransform";
 
@@ -214,19 +214,6 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
     else if (mode === "arrow") checkArrow(objects);
   };
 
-  // Zone hints for not-yet-correct draggable players (move mode).
-  const zoneHints = useMemo(() => {
-    const hints: { id: string; zones: Zone[] }[] = [];
-    if (mode === "move" && scenario.zones && !reveal) {
-      for (const id of draggableIds) {
-        if (perPlayer[id]) continue;
-        const z = scenario.zones[id];
-        if (z) hints.push({ id, zones: Array.isArray(z) ? z : [z] });
-      }
-    }
-    return hints;
-  }, [mode, scenario, draggableIds, reveal, perPlayer]);
-
   const Arrow = ({ o }: { o: BoardObject }) => {
     const a = labToScreen(o.x1 ?? o.x, o.y1 ?? o.y);
     const b = labToScreen(o.x2 ?? o.x, o.y2 ?? o.y);
@@ -285,20 +272,6 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
         <rect x={VIEW_W / 2 - 130} y={6} width={260} height={120} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={3} />
         <rect x={VIEW_W / 2 - 130} y={VIEW_H - 126} width={260} height={120} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={3} />
 
-        {/* Zone hints */}
-        {zoneHints.map(({ id, zones }) =>
-          zones.map((z, zi) => {
-            // Rotate the zone rect: a lab rect [x..x+w]x[y..y+h] maps to a screen
-            // rect spanning the transformed corners.
-            const c1 = labToScreen(z.x, z.y);
-            const c2 = labToScreen(z.x + z.w, z.y + z.h);
-            const x = Math.min(c1.sx, c2.sx), y = Math.min(c1.sy, c2.sy);
-            return (
-              <rect key={`${id}-${zi}`} x={x} y={y} width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)}
-                fill="rgba(255,209,102,.18)" stroke="rgba(255,209,102,.9)" strokeWidth={3} strokeDasharray="10 8" rx={10} />
-            );
-          })
-        )}
 
         {/* Arrow target zone on reveal (arrow mode) */}
         {reveal && mode === "arrow" && scenario.zone && (() => {
