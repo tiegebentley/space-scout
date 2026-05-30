@@ -7,7 +7,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS } from "@/engine/constants";
 import { ALL_TACTICS } from "@/engine/tactics/presets";
-import type { ZoneRule, RulePreset, ZoneCondition, ZoneMovement, ZoneAction } from "@/types/game";
+import type { ZoneRule, RulePreset, ZoneCondition, ZoneMovement, ZoneAction, ZoneOffBall } from "@/types/game";
 
 const FORMATS = [
   { id: "3v3" as const, label: "3v3", desc: "Fast & tight, great for learning" },
@@ -137,6 +137,7 @@ export default function PlayPage() {
   const [drawCarrierTeam, setDrawCarrierTeam] = useState<"us" | "them">("them");
   const [drawCarrierRole, setDrawCarrierRole] = useState<string>("");
   const [drawAction, setDrawAction] = useState<ZoneAction>("default");
+  const [drawOffBall, setDrawOffBall] = useState<ZoneOffBall>("default");
   const setMatchConfig = useGameStore((s) => s.setMatchConfig);
   const matchConfig = useGameStore((s) => s.matchConfig);
   const customPresets = useGameStore((s) => s.customPresets);
@@ -651,6 +652,19 @@ export default function PlayPage() {
             >
               <option value="default">On the ball: play normally</option>
               <option value="cross">On the ball: cross into the box</option>
+              <option value="shoot">On the ball: shoot on sight</option>
+              <option value="dribble">On the ball: dribble / take them on</option>
+              <option value="recycle">On the ball: keep it safe (recycle)</option>
+            </select>
+            {/* Off-the-ball tendency — what the player does when a teammate carries */}
+            <select
+              value={drawOffBall}
+              onChange={(e) => setDrawOffBall(e.target.value as ZoneOffBall)}
+              className="w-full rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+            >
+              <option value="default">Off the ball: hold shape</option>
+              <option value="hold_width">Off the ball: stay wide (stretch)</option>
+              <option value="drop_deep">Off the ball: drop deep / come short</option>
             </select>
 
             {/* The static pitch — draw boxes here */}
@@ -658,7 +672,7 @@ export default function PlayPage() {
               format={currentFormat}
               rules={zoneRules}
               selectedId={selectedRuleId}
-              template={{ team: drawTeam, role: drawRole || roleKeys.filter((k) => k !== "gk")[0], when: drawWhen, carrierTeam: drawCarrierTeam, carrierRole: drawCarrierRole || roleKeys.filter((k) => k !== "gk")[0], action: drawAction }}
+              template={{ team: drawTeam, role: drawRole || roleKeys.filter((k) => k !== "gk")[0], when: drawWhen, carrierTeam: drawCarrierTeam, carrierRole: drawCarrierRole || roleKeys.filter((k) => k !== "gk")[0], action: drawAction, offBall: drawOffBall }}
               onAddRule={handleDrawnRule}
               onUpdateRule={updateZoneRule}
               onSelectRule={setSelectedRuleId}
@@ -932,6 +946,26 @@ export default function PlayPage() {
                     >
                       <option value="default">Play normally</option>
                       <option value="cross">Cross into the box</option>
+                      <option value="shoot">Shoot on sight</option>
+                      <option value="dribble">Dribble / take them on</option>
+                      <option value="recycle">Keep it safe (recycle)</option>
+                    </select>
+                  </div>
+
+                  {/* Off-ball — what the player does when a teammate has the ball */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-extrabold text-[#5d6f63] w-8">Run</span>
+                    <select
+                      value={rule.offBall ?? "default"}
+                      onChange={(e) => {
+                        const v = e.target.value as ZoneOffBall;
+                        updateZoneRule(rule.id, { offBall: v === "default" ? undefined : v });
+                      }}
+                      className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+                    >
+                      <option value="default">Hold shape</option>
+                      <option value="hold_width">Stay wide (stretch)</option>
+                      <option value="drop_deep">Drop deep / come short</option>
                     </select>
                   </div>
 

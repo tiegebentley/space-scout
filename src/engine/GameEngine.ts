@@ -1052,7 +1052,32 @@ export class GameEngine {
       // to roam/center, let it wander the box instead of parking on the tactic
       // target — so it uses the whole space. The ball-chaser keeps its job.
       const zr = m === ballChaser ? null : this.activeZoneRuleFor(m);
-      const roamed = zr ? this.roamInZone(m, zr) : false;
+
+      // Off-the-ball zone tendency: while WE have the ball, drive the player
+      // toward a tendency target instead of roaming. `hold_width` pins them to
+      // the wide edge of their box (stretch the defense); `drop_deep` pulls them
+      // toward the ball to offer a short option. It's a strong lean rather than a
+      // hard lock — enforceSpacing still moderates it to keep team shape sane.
+      const offBall = zr?.offBall ?? "default";
+      let offBallActive = false;
+      if (zr && attacking && offBall !== "default") {
+        const zXMin = L + (R - L) * zr.xMin, zXMax = L + (R - L) * zr.xMax;
+        const zYMin = TOP + (BOT - TOP) * zr.yMin, zYMax = TOP + (BOT - TOP) * zr.yMax;
+        if (offBall === "hold_width") {
+          // Drive to whichever side edge of the box is nearer the touchline.
+          const targetX = (Math.abs(zXMin - L) <= Math.abs(R - zXMax)) ? zXMin + 6 : zXMax - 6;
+          this.easeToward(m, targetX, clamp(m.y, zYMin, zYMax), 2.0 * this.PACE);
+          offBallActive = true;
+        } else if (offBall === "drop_deep") {
+          // Drive toward the ball (a short receiving option), staying in the box.
+          const targetX = clamp(m.x + (this.ball.x - m.x) * 0.6, zXMin, zXMax);
+          const targetY = clamp(m.y + (this.ball.y - m.y) * 0.6, zYMin, zYMax);
+          this.easeToward(m, targetX, targetY, 2.0 * this.PACE);
+          offBallActive = true;
+        }
+      }
+
+      const roamed = offBallActive || (zr ? this.roamInZone(m, zr) : false);
 
       if (!roamed) {
         const sp = (m === ballChaser ? (attacking ? 2.1 : 2.8) : (attacking ? 1.8 : 1.6)) * this.PACE * (backoff ? 0.5 : 1);
@@ -1397,16 +1422,22 @@ export class GameEngine {
 
   // ---------- AI Passing & Shooting ----------
 
-  private shouldShoot(carrier: Player): boolean {
+  // `eager` (a `shoot` zone tendency) relaxes the range/lateral gate for THIS
+  // carrier only — they'll have a go from the edge of the box / from a tighter
+  // angle. The global "no shots from distance" gate is unchanged elsewhere.
+  private shouldShoot(carrier: Player, eager = false): boolean {
     const goalY = carrier.side === "us" ? TOP : BOT;
     const distToGoal = Math.abs(carrier.y - goalY);
     const lateralToGoal = Math.abs(carrier.x - W / 2);
 
     // HARD GATE: shots are only allowed from INSIDE the penalty box (the box
     // drawn on the pitch). Anywhere outside it — even with open space — the
-    // carrier dribbles in instead of shooting from distance.
-    if (distToGoal > BOX_H) return false;
-    if (lateralToGoal > BOX_HALF_W) return false;
+    // carrier dribbles in instead of shooting from distance. A `shoot` zone
+    // extends the range (long-range efforts) and angle for this player.
+    const maxDist = eager ? BOX_H * 1.8 : BOX_H;
+    const maxLateral = eager ? BOX_HALF_W * 1.35 : BOX_HALF_W;
+    if (distToGoal > maxDist) return false;
+    if (lateralToGoal > maxLateral) return false;
 
     const enemies = this.enemiesOf(carrier.side);
 
@@ -1422,7 +1453,10 @@ export class GameEngine {
 
     // Inside the box: shoot when the path is clear, or when only lightly blocked
     // and in close (we're already in the box, so be willing to pull the trigger).
+    // An eager shooter will also pull the trigger through a single blocker at any
+    // range inside its (extended) window — backing themselves to hit the target.
     if (blockersInPath === 0) return true;
+    if (eager && blockersInPath <= 1) return true;
     if (distToGoal < BOX_H * 0.6 && blockersInPath <= 1) return true;
     return false;
   }
@@ -1464,18 +1498,34 @@ export class GameEngine {
     return true;
   }
 
+  // Recycle: release to the most open teammate (the safest pass, regardless of
+  // direction). Returns false when there's nobody safe enough — the caller then
+  // falls back to normal carrier logic. Like every pass it goes through doPass.
+  private tryRecycle(carrier: Player): boolean {
+    const team = carrier.side === "us" ? this.teamUs : this.teamThem;
+    let best: Player | null = null;
+    let bestAv = -Infinity;
+    for (const m of team) {
+      if (m === carrier || m.gk || (m.frozenTimer && m.frozenTimer > 0)) continue;
+      const av = this.availability(m, carrier);
+      if (av > bestAv) { bestAv = av; best = m; }
+    }
+    if (!best || bestAv < 0.35) return false; // no genuinely safe option
+    this.doPass(carrier, best);
+    return true;
+  }
+
   private aiConsiderPass() {
     const carrier = this.ball.owner;
     if (!carrier || carrier === this.you || carrier.gk || this.ball.flying || this.passCooldown > 0 || this.gstate !== "live") return;
 
     // Zone tendency: what this carrier prefers to DO in their active zone.
-    // Only `cross` has dedicated behavior today; the other values are accepted
-    // by the data model but currently fall through to the normal carrier logic.
-    // Omitted/"default" → unchanged behavior.
+    // Biases the existing carrier levers (shoot gate, dribble gate, pass
+    // eagerness). Omitted/"default" → unchanged behavior.
     const action = this.activeZoneRuleFor(carrier)?.action ?? "default";
 
-    // Shooting takes priority.
-    if (this.shouldShoot(carrier)) {
+    // Shooting takes priority. A `shoot` zone relaxes the gate (this zone only).
+    if (this.shouldShoot(carrier, action === "shoot")) {
       this.aiShoot(carrier);
       return;
     }
@@ -1484,6 +1534,12 @@ export class GameEngine {
     // If there's a teammate to aim at, cross and return; otherwise fall through
     // to the normal carrier logic so they don't get stuck holding the ball.
     if (action === "cross" && this.tryCross(carrier)) return;
+
+    // Recycle tendency: play it safe — look to release to the most open teammate
+    // (even square/backward) rather than dribble or force it forward. Checked
+    // BEFORE the dribble/breakaway gates so it actually keeps possession instead
+    // of running into space. Falls through if nobody's safe to give it to.
+    if (action === "recycle" && this.tryRecycle(carrier)) return;
 
     const team = carrier.side === "us" ? this.teamUs : this.teamThem;
     const dir = this.attackDir(carrier.side);
@@ -1545,6 +1601,12 @@ export class GameEngine {
       }
     }
 
+    // `dribble` zone: back themselves to carry it. Hold the ball through tighter
+    // pressure than usual as long as there's any space ahead — only let go when a
+    // defender is right on top of them. `recycle` does the opposite (below): it
+    // never holds for a dribble, always looking for the safe release.
+    if (action === "dribble" && hasSpaceAhead && pressure > 14) return;
+
     // Given any space ahead and not tightly pressed, KEEP ATTACKING — don't pass.
     // The carrier-lane dribble drives them forward / around the defender. This is
     // the main "be aggressive" lever: only a defender right on them (<24px) stops
@@ -1563,8 +1625,10 @@ export class GameEngine {
     }
     if (!defenderAhead && distToGoal < H * 0.65) return; // breakaway — keep running
 
-    // Pass eagerness scales with pressure — don't hold it into a tackle
-    const passChance = pressure < 50 ? 0.85 : pressure < 80 ? 0.5 : pressure < 120 ? 0.15 : 0.06;
+    // Pass eagerness scales with pressure — don't hold it into a tackle. A
+    // `dribble` zone cuts that eagerness so the carrier keeps it more often.
+    const dribbleBias = action === "dribble" ? 0.35 : 1;
+    const passChance = (pressure < 50 ? 0.85 : pressure < 80 ? 0.5 : pressure < 120 ? 0.15 : 0.06) * dribbleBias;
     const wantPass = Math.random() < passChance || best.s > 0.5;
     if (!wantPass) return;
     if (best.s < 0.15) return;

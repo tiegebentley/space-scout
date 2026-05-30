@@ -218,6 +218,13 @@ export type ZoneMovement = "roam" | "center" | "free";
 //  - recycle: keep possession with safe square/back passes
 export type ZoneAction = "default" | "cross" | "shoot" | "dribble" | "recycle";
 
+// Off-the-ball tendency for a player inside this zone when a TEAMMATE has the
+// ball (they're not the carrier, chaser, or presser). Layers on top of
+// `movement`, which only governs idle roaming. Omitted/"default" = normal shape.
+//  - hold_width: stay pinned to the wide edge of the box to stretch the defense
+//  - drop_deep:  come short toward the ball to offer a link-up / receive option
+export type ZoneOffBall = "default" | "hold_width" | "drop_deep";
+
 export interface ZoneRule {
   id: string;
   team: "us" | "them";
@@ -237,6 +244,9 @@ export interface ZoneRule {
   movement?: ZoneMovement;
   // What the player tends to DO with the ball in this zone. Omitted = "default".
   action?: ZoneAction;
+  // What the player tends to do OFF the ball (teammate has it) in this zone.
+  // Omitted = "default".
+  offBall?: ZoneOffBall;
 }
 
 export interface RulePreset {
