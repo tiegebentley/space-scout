@@ -38,6 +38,10 @@ export type EngineEvent =
   | { type: "stateChange"; state: GameState }
   | { type: "actionUpdate"; canPass: boolean; canShoot: boolean }
   | { type: "drill:objective"; objectiveId: string; value: number }
+  // Fired on every possession change (the giveBall chokepoint). Feeds the live
+  // Scenario objective tracker. sameTeam=true is a completed pass; fromRestart
+  // marks restart deliveries; role/coords let zone + role objectives evaluate.
+  | { type: "possession"; fromId: string | null; fromRole: string | null; toId: string; toRole: string; toSide: "us" | "them"; sameTeam: boolean; fromRestart: boolean; x: number; y: number }
   | { type: "countdown"; value: "3" | "2" | "1" | "GO" | null };
 
 export class GameEngine {
@@ -138,6 +142,7 @@ export class GameEngine {
   // Player.role is the coarse role type; rules key off the specific slot, so we
   // recover it from the user config or the encoded id (us-lw / them-fwd).
   private roleKeyOf(p: Player): string {
+    if (p.gk) return "gk"; // ids are gk-us / gk-them (suffix), normalize to "gk"
     if (p === this.you) return this.config.userRole || "";
     return p.id.replace("us-", "").replace("them-", "");
   }
@@ -550,6 +555,15 @@ export class GameEngine {
   // ---------- Restart handling ----------
 
   private setRestart(r: Restart) {
+    // Scenario override: force every NON-kickoff dead ball to a configured type
+    // (e.g. "all restarts are throw-ins"). Kickoffs (first whistle / post-goal)
+    // are left alone. Throw-ins snap to the nearer touchline.
+    const forced = this.config.scenarioSetup?.forcedRestart;
+    if (forced && r.type !== "kickoff" && forced !== r.type) {
+      r = { ...r, type: forced };
+      if (this.config.scenarioSetup?.restartTeam) r.team = this.config.scenarioSetup.restartTeam;
+      if (forced === "throwin") r.y = r.y < H / 2 ? TOP + 8 : BOT - 8;
+    }
     this.gstate = "dead";
     this.restart = r;
     this.deadTimer = r.type === "kickoff" ? 120 : Math.round(70 / this.PACE);
@@ -768,6 +782,21 @@ export class GameEngine {
     this.poss = p.side;
     this.youHasBall = p === this.you;
     this.ball.lastTouch = p.side;
+    // Possession-change event for the live Scenario objective tracker. Emitted
+    // for every change incl. restarts; `sameTeam` (and not a restart) marks a
+    // completed pass.
+    this.emit({
+      type: "possession",
+      fromId: prev?.id ?? null,
+      fromRole: prev ? this.roleKeyOf(prev) : null,
+      toId: p.id,
+      toRole: this.roleKeyOf(p),
+      toSide: p.side,
+      sameTeam: !!prev && prev.side === p.side,
+      fromRestart,
+      x: p.x,
+      y: p.y,
+    });
     this.emitActionUpdate();
   }
 

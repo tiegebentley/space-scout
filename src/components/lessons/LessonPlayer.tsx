@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { ScenarioBoard, type ScenarioResult } from "./ScenarioBoard";
+import { ScenarioView } from "./ScenarioView";
 import { useGameStore } from "@/stores/gameStore";
 import type { Lesson } from "@/types/lessons";
 
@@ -19,6 +20,7 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
 
   const [stepIdx, setStepIdx] = useState(0);
   const [resolved, setResolved] = useState(false); // current scenario can advance
+  const [objectiveMet, setObjectiveMet] = useState(false); // live-scenario complete
   // correctness keyed by scenario id (so retrying a step doesn't double count)
   const [results, setResults] = useState<Record<string, boolean>>({});
   const [showSummary, setShowSummary] = useState(false);
@@ -38,17 +40,22 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
     [step]
   );
 
-  const canAdvance = step.kind === "explain" || (step.kind === "scenario" && resolved);
+  const canAdvance =
+    step.kind === "explain" ||
+    (step.kind === "scenario" && resolved) ||
+    (step.kind === "live-scenario" && objectiveMet);
 
   const goNext = useCallback(() => {
     if (stepIdx >= total - 1) return;
     setResolved(false);
+    setObjectiveMet(false);
     setStepIdx((i) => i + 1);
   }, [stepIdx, total]);
 
   const goBack = useCallback(() => {
     if (stepIdx === 0) return;
     setResolved(false);
+    setObjectiveMet(false);
     setStepIdx((i) => i - 1);
   }, [stepIdx]);
 
@@ -104,7 +111,7 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   return (
     <main className="flex-1 flex flex-col items-center p-4">
       {/* Wider while showing a scenario so the field + side panel sit side by side */}
-      <div className={clsx("w-full", step.kind === "scenario" ? "max-w-5xl" : "max-w-xl")}>
+      <div className={clsx("w-full", step.kind === "scenario" ? "max-w-5xl" : "max-w-xl")} data-step={step.kind}>
         {/* Header + progress */}
         <div className="flex items-center justify-between mb-2">
           <Link href="/learn" className="text-xs font-extrabold text-[#5d6f63] hover:underline">← Lessons</Link>
@@ -137,6 +144,19 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
           </div>
         )}
 
+        {step.kind === "live-scenario" && (
+          <div className="bg-white rounded-2xl shadow-lg border border-[rgba(20,60,35,.08)] p-4 mb-5">
+            <h2 className="font-[Fredoka] font-semibold text-lg text-[#16241c] mb-1">{step.title}</h2>
+            {step.body && <p className="text-sm font-semibold text-[#5d6f63] mb-3">{step.body}</p>}
+            <ScenarioView
+              key={`${stepIdx}-${runId}`}
+              matchConfig={{ ...step.matchConfig, scenarioSetup: step.scenarioSetup }}
+              objective={step.objective}
+              onComplete={() => setObjectiveMet(true)}
+            />
+          </div>
+        )}
+
         {step.kind === "play" && (
           <div className="bg-gradient-to-b from-[#43c46e] to-[#2B8A4E] text-white rounded-2xl shadow-lg p-6 mb-5">
             <h2 className="font-[Fredoka] font-semibold text-2xl mb-2">{step.title}</h2>
@@ -163,7 +183,9 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
               disabled={!canAdvance}
               className="flex-1 rounded-xl px-4 py-2.5 text-sm font-extrabold text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default bg-[#2E6FE0] hover:bg-[#2961c9]"
             >
-              {step.kind === "scenario" && !resolved ? "Answer to continue…" : "Next"}
+              {step.kind === "scenario" && !resolved ? "Answer to continue…"
+                : step.kind === "live-scenario" && !objectiveMet ? "Complete the objective…"
+                : "Next"}
             </button>
           </div>
         )}

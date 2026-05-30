@@ -75,6 +75,24 @@ export interface Score {
 
 export type DefensivePressure = "low" | "medium" | "high" | "full";
 
+// A rectangle in ENGINE pitch coords (W×H). Used by receive-in-zone objectives.
+export interface EngineRect { x: number; y: number; w: number; h: number }
+
+// What the player must accomplish in a live "Scenario" lesson step. Tracked by
+// engine/scenarioObjective.ts off the engine's possession/goal/state events.
+export type ScenarioObjective =
+  | { type: "passCount"; label: string; target: number; toRole?: string; consecutive?: boolean }
+  | { type: "receiveInZone"; label: string; role: string; zone: EngineRect; target?: number }
+  | { type: "score"; label: string; target: number }
+  | { type: "keepPossession"; label: string; seconds: number }
+  | { type: "winBack"; label: string; withinSeconds: number };
+
+// Constrained setup for a Scenario step (boundaries/rules ride on zoneRules).
+export interface ScenarioSetup {
+  forcedRestart?: "throwin" | "goalkick" | "kickoff" | "corner";
+  restartTeam?: "us" | "them";
+}
+
 export interface MatchConfig {
   duration: number; // ms
   format: "3v3" | "5v5" | "7v7";
@@ -86,6 +104,9 @@ export interface MatchConfig {
   tacticId?: string;     // YOUR team's tactic
   oppTacticId?: string;  // opponent's tactic
   zoneRules?: ZoneRule[];
+  // Set on live "Scenario" steps — the objective to complete + dead-ball setup.
+  objective?: ScenarioObjective;
+  scenarioSetup?: ScenarioSetup;
 }
 
 // Goalkick defensive setups — where the opposition positions on our goalkick

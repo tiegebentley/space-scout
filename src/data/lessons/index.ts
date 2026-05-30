@@ -5,10 +5,12 @@
 import type { Lesson, Course } from "@/types/lessons";
 import { SPACING_LESSON } from "./spacing";
 import { MEET_SHAPE_LESSON } from "./meet-shape";
+import { RESTARTS_LESSON } from "./restarts";
 
 export const LESSONS: Record<string, Lesson> = {
   [MEET_SHAPE_LESSON.id]: MEET_SHAPE_LESSON,
   [SPACING_LESSON.id]: SPACING_LESSON,
+  [RESTARTS_LESSON.id]: RESTARTS_LESSON,
 };
 
 export function getLesson(id: string): Lesson | undefined {
@@ -40,6 +42,6 @@ export const COURSES: Course[] = [
     level: "intermediate",
     description:
       "Ready for more? Learn transitions, 2v1 support play, and game-day set pieces like goal kicks, kickoffs, and throw-ins.",
-    lessonIds: ["when-we-win-ball", "helping-teammate-2v1", "game-day-situations"],
+    lessonIds: ["restarts-build-from-back", "when-we-win-ball", "helping-teammate-2v1", "game-day-situations"],
   },
 ];

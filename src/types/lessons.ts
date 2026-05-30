@@ -2,7 +2,7 @@
 // (originally a single vanilla-JS index.html). The scenario DATA shape is lifted
 // verbatim so existing lab content can be dropped in; the grader and board are
 // reimplemented natively (see engine/scenarioGrader.ts, components/lessons/).
-import type { MatchConfig } from "./game";
+import type { MatchConfig, ScenarioObjective, ScenarioSetup } from "./game";
 
 // The lab pitch is a fixed 1000x620 coordinate space; all board/zone/optimal
 // coordinates below are in those units. The board component scales to fit.
@@ -97,12 +97,26 @@ export interface Scenario {
   board: { objects: BoardObject[] };
 }
 
-// A lesson is an ordered list of steps that interleave teaching, graded
-// scenarios, and (as the finale) a live space-scout match preconfigured for the
-// concept. This is the bridge between the lab and the game.
+// Scenario objective + setup types live in game.ts (so MatchConfig can carry
+// them without a circular import); re-exported for convenience.
+export type { ScenarioObjective, ScenarioSetup } from "./game";
+
+// A lesson is an ordered list of steps. Three authoring modes:
+//  - Instructional: explain cards + static graded boards ("explain" / "scenario").
+//  - Scenario ("live-scenario"): the live engine, constrained by a setup, with an
+//    objective to complete.
+//  - Game ("play"): free live play, preconfigured.
 export type LessonStep =
   | { kind: "explain"; title: string; body: string }
   | { kind: "scenario"; scenario: Scenario }
+  | {
+      kind: "live-scenario";
+      title: string;
+      body: string;
+      matchConfig: Partial<MatchConfig>;
+      objective: ScenarioObjective;
+      scenarioSetup?: ScenarioSetup;
+    }
   | { kind: "play"; title: string; body: string; matchConfig: Partial<MatchConfig> };
 
 export interface Lesson {
