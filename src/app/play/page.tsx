@@ -7,7 +7,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS } from "@/engine/constants";
 import { ALL_TACTICS } from "@/engine/tactics/presets";
-import type { ZoneRule, RulePreset, ZoneCondition, ZoneMovement } from "@/types/game";
+import type { ZoneRule, RulePreset, ZoneCondition, ZoneMovement, ZoneAction } from "@/types/game";
 
 const FORMATS = [
   { id: "3v3" as const, label: "3v3", desc: "Fast & tight, great for learning" },
@@ -136,6 +136,7 @@ export default function PlayPage() {
   const [drawWhen, setDrawWhen] = useState<ZoneCondition>("always");
   const [drawCarrierTeam, setDrawCarrierTeam] = useState<"us" | "them">("them");
   const [drawCarrierRole, setDrawCarrierRole] = useState<string>("");
+  const [drawAction, setDrawAction] = useState<ZoneAction>("default");
   const setMatchConfig = useGameStore((s) => s.setMatchConfig);
   const matchConfig = useGameStore((s) => s.matchConfig);
   const customPresets = useGameStore((s) => s.customPresets);
@@ -642,13 +643,22 @@ export default function PlayPage() {
                 </select>
               </div>
             )}
+            {/* On-the-ball tendency — what the player does when carrying here */}
+            <select
+              value={drawAction}
+              onChange={(e) => setDrawAction(e.target.value as ZoneAction)}
+              className="w-full rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+            >
+              <option value="default">On the ball: play normally</option>
+              <option value="cross">On the ball: cross into the box</option>
+            </select>
 
             {/* The static pitch — draw boxes here */}
             <ZonePitchEditor
               format={currentFormat}
               rules={zoneRules}
               selectedId={selectedRuleId}
-              template={{ team: drawTeam, role: drawRole || roleKeys.filter((k) => k !== "gk")[0], when: drawWhen, carrierTeam: drawCarrierTeam, carrierRole: drawCarrierRole || roleKeys.filter((k) => k !== "gk")[0] }}
+              template={{ team: drawTeam, role: drawRole || roleKeys.filter((k) => k !== "gk")[0], when: drawWhen, carrierTeam: drawCarrierTeam, carrierRole: drawCarrierRole || roleKeys.filter((k) => k !== "gk")[0], action: drawAction }}
               onAddRule={handleDrawnRule}
               onUpdateRule={updateZoneRule}
               onSelectRule={setSelectedRuleId}
@@ -906,6 +916,22 @@ export default function PlayPage() {
                       <option value="roam">Roam the whole box</option>
                       <option value="center">Hold the center</option>
                       <option value="free">Free (box is just a limit)</option>
+                    </select>
+                  </div>
+
+                  {/* Action — what the player does with the ball in this zone */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-extrabold text-[#5d6f63] w-8">Ball</span>
+                    <select
+                      value={rule.action ?? "default"}
+                      onChange={(e) => {
+                        const v = e.target.value as ZoneAction;
+                        updateZoneRule(rule.id, { action: v === "default" ? undefined : v });
+                      }}
+                      className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+                    >
+                      <option value="default">Play normally</option>
+                      <option value="cross">Cross into the box</option>
                     </select>
                   </div>
 

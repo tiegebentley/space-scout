@@ -1427,15 +1427,63 @@ export class GameEngine {
     return false;
   }
 
+  // Cross from a wide attacking zone: find the best teammate inside the
+  // opponent's penalty box and deliver to them. Returns false (no cross made)
+  // when there's nobody worth aiming at, so the caller falls back to normal
+  // carrier logic. The delivery goes through doPass → launchBall, so it can be
+  // intercepted and obeys the same turnover rules as any other pass.
+  private tryCross(carrier: Player): boolean {
+    // Opponent goal line + box geometry. The box extends BOX_H INTO the field
+    // from the goal line: us attacks the TOP goal so its box is y∈[TOP, TOP+BOX_H];
+    // them attacks BOT so its box is y∈[BOT-BOX_H, BOT]. Width is centered on goal.
+    const goalY = carrier.side === "us" ? TOP : BOT;
+    const boxFarY = carrier.side === "us" ? goalY + BOX_H : goalY - BOX_H;
+    const inBox = (p: Player) =>
+      Math.abs(p.x - W / 2) <= BOX_HALF_W &&
+      (carrier.side === "us" ? p.y <= boxFarY : p.y >= boxFarY);
+
+    const team = carrier.side === "us" ? this.teamUs : this.teamThem;
+    let best: Player | null = null;
+    let bestScore = -Infinity;
+    for (const m of team) {
+      if (m === carrier || m.gk || (m.frozenTimer && m.frozenTimer > 0)) continue;
+      if (!inBox(m)) continue;
+      // Prefer central, unmarked targets — a header/tap from the spot.
+      const central = 1 - Math.min(1, Math.abs(m.x - W / 2) / BOX_HALF_W);
+      const space = clamp(this.nearestEnemy(m.x, m.y, m.side) / 60, 0, 1);
+      const score = central * 0.6 + space * 0.4;
+      if (score > bestScore) { bestScore = score; best = m; }
+    }
+    if (!best) return false;
+    this.doPass(carrier, best);
+    this.emitCoach(
+      carrier.side === "us"
+        ? "Cross into the box — get a runner on the end of it!"
+        : "Reds whip one into the box."
+    );
+    return true;
+  }
+
   private aiConsiderPass() {
     const carrier = this.ball.owner;
     if (!carrier || carrier === this.you || carrier.gk || this.ball.flying || this.passCooldown > 0 || this.gstate !== "live") return;
 
-    // Shooting takes priority
+    // Zone tendency: what this carrier prefers to DO in their active zone.
+    // Only `cross` has dedicated behavior today; the other values are accepted
+    // by the data model but currently fall through to the normal carrier logic.
+    // Omitted/"default" → unchanged behavior.
+    const action = this.activeZoneRuleFor(carrier)?.action ?? "default";
+
+    // Shooting takes priority.
     if (this.shouldShoot(carrier)) {
       this.aiShoot(carrier);
       return;
     }
+
+    // Cross tendency: from this zone the carrier looks to deliver into the box.
+    // If there's a teammate to aim at, cross and return; otherwise fall through
+    // to the normal carrier logic so they don't get stuck holding the ball.
+    if (action === "cross" && this.tryCross(carrier)) return;
 
     const team = carrier.side === "us" ? this.teamUs : this.teamThem;
     const dir = this.attackDir(carrier.side);

@@ -209,6 +209,15 @@ export type ZoneCondition =
 //  - free:   no roaming; the box is only a boundary, AI tactic/ball logic moves them
 export type ZoneMovement = "roam" | "center" | "free";
 
+// On-the-ball tendency for a carrier inside this zone — what they prefer to DO,
+// as opposed to `movement` (where they stand when off the ball). Omitted/"default"
+// = the normal carrier AI (dribble/pass/shoot by situation).
+//  - cross:   wide attacker whips an early ball to a teammate in the box
+//  - shoot:   bias toward shooting whenever there's any sight of goal
+//  - dribble: prefer to drive with the ball rather than release it early
+//  - recycle: keep possession with safe square/back passes
+export type ZoneAction = "default" | "cross" | "shoot" | "dribble" | "recycle";
+
 export interface ZoneRule {
   id: string;
   team: "us" | "them";
@@ -226,6 +235,8 @@ export interface ZoneRule {
   carrierRole?: string;
   // How the player moves inside the box. Omitted = "roam".
   movement?: ZoneMovement;
+  // What the player tends to DO with the ball in this zone. Omitted = "default".
+  action?: ZoneAction;
 }
 
 export interface RulePreset {

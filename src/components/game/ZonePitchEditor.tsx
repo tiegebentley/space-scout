@@ -6,7 +6,7 @@ import {
   ruleScreenRect, hitTestRuleBox, handleCursor,
   type DraftRect, type Handle,
 } from "@/engine/staticPitch";
-import type { ZoneRule, ZoneCondition } from "@/types/game";
+import type { ZoneRule, ZoneCondition, ZoneAction } from "@/types/game";
 
 export interface DrawTemplate {
   team: "us" | "them";
@@ -14,6 +14,7 @@ export interface DrawTemplate {
   when: ZoneCondition;
   carrierTeam: "us" | "them";
   carrierRole: string;
+  action: ZoneAction;
 }
 
 interface Props {
@@ -212,6 +213,7 @@ export function ZonePitchEditor({ format, rules, selectedId, template, onAddRule
         when: t.when === "always" ? undefined : t.when,
         carrierTeam: t.when === "carrier_is" ? t.carrierTeam : undefined,
         carrierRole: t.when === "carrier_is" ? t.carrierRole : undefined,
+        action: t.action === "default" ? undefined : t.action,
       };
       onAddRule(rule);
     };
