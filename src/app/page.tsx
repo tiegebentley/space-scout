@@ -61,6 +61,13 @@ export default function HomePage() {
 
         {/* Game modes */}
         <div className="flex flex-col gap-3">
+          <Link href="/learn" className="block">
+            <div className="bg-gradient-to-b from-[#3f87ef] to-[#2E6FE0] text-white rounded-2xl p-5 shadow-[0_5px_0_#1b4aa0,0_8px_16px_rgba(0,0,0,.2)] active:translate-y-[3px] active:shadow-[0_2px_0_#1b4aa0] transition-transform cursor-pointer">
+              <h2 className="font-[Fredoka] font-semibold text-xl">Learn</h2>
+              <p className="text-sm font-semibold opacity-90 mt-0.5">Lessons that end in a live game</p>
+            </div>
+          </Link>
+
           <Link href="/play" className="block">
             <div className="bg-gradient-to-b from-[#43c46e] to-[#2B8A4E] text-white rounded-2xl p-5 shadow-[0_5px_0_#14502d,0_8px_16px_rgba(0,0,0,.2)] active:translate-y-[3px] active:shadow-[0_2px_0_#14502d] transition-transform cursor-pointer">
               <h2 className="font-[Fredoka] font-semibold text-xl">Play Match</h2>

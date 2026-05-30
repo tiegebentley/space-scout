@@ -158,6 +158,7 @@ export interface PlayerProgress {
   drillsCompleted: CompletedDrill[];
   matchesPlayed: number;
   achievements: Achievement[];
+  completedLessons: string[]; // lesson ids finished in the Learn flow
 }
 
 export interface SkillRatings {

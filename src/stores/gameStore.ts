@@ -16,6 +16,7 @@ interface GameStore {
   addXp: (amount: number) => void;
   recordDrill: (drill: CompletedDrill) => void;
   recordMatch: () => void;
+  recordLesson: (lessonId: string) => void;
   updateSkill: (skill: keyof SkillRatings, delta: number) => void;
   unlockAchievement: (achievement: Achievement) => void;
 
@@ -60,6 +61,7 @@ const DEFAULT_PROGRESS: PlayerProgress = {
   drillsCompleted: [],
   matchesPlayed: 0,
   achievements: [],
+  completedLessons: [],
 };
 
 export const useGameStore = create<GameStore>()(
@@ -103,6 +105,15 @@ export const useGameStore = create<GameStore>()(
             matchesPlayed: s.progress.matchesPlayed + 1,
           },
         })),
+
+      recordLesson: (lessonId) =>
+        set((s) => {
+          const done = s.progress.completedLessons ?? [];
+          if (done.includes(lessonId)) return s;
+          return {
+            progress: { ...s.progress, completedLessons: [...done, lessonId] },
+          };
+        }),
 
       updateSkill: (skill, delta) =>
         set((s) => ({
