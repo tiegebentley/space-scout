@@ -11,6 +11,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { AuthorBoard, type AuthorTool } from "@/components/lessons/AuthorBoard";
 import { FormationPreview } from "@/components/lessons/FormationPreview";
+import { MatchSetupControls } from "@/components/game/MatchSetupControls";
 import { LessonPlayer } from "@/components/lessons/LessonPlayer";
 import { useGameStore } from "@/stores/gameStore";
 import { getLesson } from "@/data/lessons";
@@ -47,6 +48,9 @@ interface DraftScenario {
   liveBody: string;
   format: "3v3" | "5v5" | "7v7";
   userRole: string;          // role the player controls
+  oppTacticId: string;       // opponent tactic preset
+  duration: number;          // match length (ms)
+  aiDifficulty: "easy" | "medium" | "hard";
   forcedRestart: "" | "throwin" | "goalkick" | "kickoff" | "corner";
   objType: ObjType;
   objTarget: number;
@@ -66,7 +70,9 @@ function blankScenario(kind: StepKind = "instructional"): DraftScenario {
       { text: "", correct: true }, { text: "", correct: false },
     ], infoCards: {},
     liveTitle: kind === "game" ? "Now play a game" : "Try it live",
-    liveBody: "", format: "5v5", userRole: "hold", forcedRestart: "",
+    liveBody: "", format: "5v5", userRole: "hold",
+    oppTacticId: "possession", duration: 180000, aiDifficulty: "medium",
+    forcedRestart: "",
     objType: "passCount", objTarget: 5, objToRole: "gk", zoneRules: [],
   };
 }
@@ -126,7 +132,7 @@ function draftToStep(d: DraftScenario): LessonStep {
       kind: "live-scenario",
       title: d.liveTitle || "Try it live",
       body: d.liveBody,
-      matchConfig: { format: d.format, userRole: d.userRole, zoneRules: d.zoneRules },
+      matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules },
       objective: draftToObjective(d),
       scenarioSetup: d.forcedRestart ? { forcedRestart: d.forcedRestart } : undefined,
     };
@@ -136,7 +142,7 @@ function draftToStep(d: DraftScenario): LessonStep {
       kind: "play",
       title: d.liveTitle || "Play a game",
       body: d.liveBody,
-      matchConfig: { format: d.format, userRole: d.userRole, zoneRules: d.zoneRules },
+      matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules },
     };
   }
   return { kind: "scenario", scenario: toScenario(d) };
@@ -176,6 +182,9 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.liveTitle = st.title; d.liveBody = st.body;
       d.format = (st.matchConfig.format as DraftScenario["format"]) ?? "5v5";
       d.userRole = st.matchConfig.userRole ?? "hold";
+      d.oppTacticId = st.matchConfig.oppTacticId ?? "possession";
+      d.duration = st.matchConfig.duration ?? 180000;
+      d.aiDifficulty = st.matchConfig.aiDifficulty ?? "medium";
       d.zoneRules = st.matchConfig.zoneRules ?? [];
       d.forcedRestart = st.scenarioSetup?.forcedRestart ?? "";
       d.objType = st.objective.type;
@@ -190,6 +199,9 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.liveTitle = st.title; d.liveBody = st.body;
       d.format = (st.matchConfig.format as DraftScenario["format"]) ?? "5v5";
       d.userRole = st.matchConfig.userRole ?? "hold";
+      d.oppTacticId = st.matchConfig.oppTacticId ?? "possession";
+      d.duration = st.matchConfig.duration ?? 180000;
+      d.aiDifficulty = st.matchConfig.aiDifficulty ?? "medium";
       d.zoneRules = st.matchConfig.zoneRules ?? [];
       drafts.push(d);
     }
@@ -468,18 +480,12 @@ function AuthorEditor() {
             {cur.stepKind === "scenario" && (
               <>
                 <div className={GROUP}>
-                  <p className={GLABEL}>SCENARIO SETUP</p>
-                  <label className="block text-[11px] font-bold text-[#5d6f63]">Format
-                    <select value={cur.format} onChange={(e) => patch({ format: e.target.value as DraftScenario["format"] })} className="ml-2 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white">
-                      <option value="3v3">3v3</option><option value="5v5">5v5</option><option value="7v7">7v7</option>
-                    </select>
-                  </label>
-                  <label className="block text-[11px] font-bold text-[#5d6f63]">You control
-                    <select value={cur.userRole} onChange={(e) => patch({ userRole: e.target.value })} className="ml-2 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white">
-                      {["hold", "lw", "rw", "fwd", "lcm", "rcm", "gk"].map((r) => <option key={r} value={r}>#{r}</option>)}
-                    </select>
-                  </label>
-                  <label className="block text-[11px] font-bold text-[#5d6f63]">Every restart is a
+                  <p className={GLABEL}>MATCH SETUP</p>
+                  <MatchSetupControls
+                    value={{ format: cur.format, userRole: cur.userRole, oppTacticId: cur.oppTacticId, duration: cur.duration, aiDifficulty: cur.aiDifficulty }}
+                    onChange={(p) => patch(p as Partial<DraftScenario>)}
+                  />
+                  <label className="block text-[11px] font-extrabold tracking-wide text-[#5d6f63] mt-1">EVERY RESTART IS A
                     <select value={cur.forcedRestart} onChange={(e) => patch({ forcedRestart: e.target.value as DraftScenario["forcedRestart"] })} className="ml-2 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white">
                       <option value="">(normal)</option><option value="throwin">Throw-in</option><option value="goalkick">Goal kick</option><option value="corner">Corner</option><option value="kickoff">Kick-off</option>
                     </select>
@@ -514,17 +520,11 @@ function AuthorEditor() {
             {/* ── GAME editor ── */}
             {cur.stepKind === "game" && (
               <div className={GROUP}>
-                <p className={GLABEL}>GAME SETUP</p>
-                <label className="block text-[11px] font-bold text-[#5d6f63]">Format
-                  <select value={cur.format} onChange={(e) => patch({ format: e.target.value as DraftScenario["format"] })} className="ml-2 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white">
-                    <option value="3v3">3v3</option><option value="5v5">5v5</option><option value="7v7">7v7</option>
-                  </select>
-                </label>
-                <label className="block text-[11px] font-bold text-[#5d6f63]">You control
-                  <select value={cur.userRole} onChange={(e) => patch({ userRole: e.target.value })} className="ml-2 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white">
-                    {["hold", "lw", "rw", "fwd", "lcm", "rcm"].map((r) => <option key={r} value={r}>#{r}</option>)}
-                  </select>
-                </label>
+                <p className={GLABEL}>MATCH SETUP</p>
+                <MatchSetupControls
+                  value={{ format: cur.format, userRole: cur.userRole, oppTacticId: cur.oppTacticId, duration: cur.duration, aiDifficulty: cur.aiDifficulty }}
+                  onChange={(p) => patch(p as Partial<DraftScenario>)}
+                />
               </div>
             )}
 
