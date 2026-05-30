@@ -3,7 +3,7 @@
 // model as ScenarioBoard, but every object is movable and you can add/remove
 // players, the ball, and an answer arrow, plus draw target zones for the answer
 // players. Emits changes back to the author page via callbacks.
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { clsx } from "clsx";
 import { LAB_PITCH } from "@/types/lessons";
 import type { BoardObject, Zone } from "@/types/lessons";
@@ -38,6 +38,10 @@ export function AuthorBoard({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const drag = useRef<{ id: string; end?: "tip" | "tail" } | null>(null);
   const zoneDraw = useRef<{ forId: string; x0: number; y0: number } | null>(null);
+  // Keep latest objects/setObjects for the window-level drag listeners.
+  const objectsRef = useRef(objects);
+  const setObjectsRef = useRef(setObjects);
+  useEffect(() => { objectsRef.current = objects; setObjectsRef.current = setObjects; });
 
   const toLab = useCallback((cx: number, cy: number) => {
     const svg = svgRef.current;
@@ -58,43 +62,40 @@ export function AuthorBoard({
     }
   };
 
+  // Drag a token via window listeners (robust across re-renders).
   const onObjPointerDown = (id: string, end?: "tip" | "tail") => (e: React.PointerEvent) => {
     if (tool.kind === "drawZone") return; // zone tool ignores tokens
     e.stopPropagation();
     onSelect(id);
     drag.current = { id, end };
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (drag.current) {
-      const { x, y } = toLab(e.clientX, e.clientY);
-      const { id, end } = drag.current;
-      setObjects(objects.map((o) => {
-        if (o.id !== id) return o;
-        if (o.type === "arrow") return end === "tail" ? { ...o, x1: x, y1: y } : { ...o, x2: x, y2: y };
+    const move = (ev: PointerEvent) => {
+      if (!drag.current) return;
+      const { x, y } = toLab(ev.clientX, ev.clientY);
+      const { id: did, end: dend } = drag.current;
+      setObjectsRef.current(objectsRef.current.map((o) => {
+        if (o.id !== did) return o;
+        if (o.type === "arrow") return dend === "tail" ? { ...o, x1: x, y1: y } : { ...o, x2: x, y2: y };
         return { ...o, x, y };
       }));
-    } else if (zoneDraw.current) {
-      // live preview handled by reading zoneDraw in render via state? keep simple:
-      // we only commit on pointer up.
-    }
+    };
+    const up = () => { drag.current = null; window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   };
 
-  const onPointerUp = (e: React.PointerEvent) => {
-    if (drag.current) { drag.current = null; return; }
-    if (zoneDraw.current) {
-      const { x, y } = toLab(e.clientX, e.clientY);
-      const z = zoneDraw.current;
-      const rect: Zone = {
-        x: Math.round(Math.min(z.x0, x)),
-        y: Math.round(Math.min(z.y0, y)),
-        w: Math.round(Math.abs(x - z.x0)),
-        h: Math.round(Math.abs(y - z.y0)),
-      };
-      if (rect.w > 20 && rect.h > 20) setZone(z.forId, rect);
-      zoneDraw.current = null;
-    }
+  // Draw a zone via window listeners; commit on release.
+  const onSvgPointerUpZone = (e: React.PointerEvent) => {
+    if (!zoneDraw.current) return;
+    const { x, y } = toLab(e.clientX, e.clientY);
+    const z = zoneDraw.current;
+    const rect: Zone = {
+      x: Math.round(Math.min(z.x0, x)),
+      y: Math.round(Math.min(z.y0, y)),
+      w: Math.round(Math.abs(x - z.x0)),
+      h: Math.round(Math.abs(y - z.y0)),
+    };
+    if (rect.w > 20 && rect.h > 20) setZone(z.forId, rect);
+    zoneDraw.current = null;
   };
 
   const zoneRect = (z: Zone, key: string, active: boolean) => {
@@ -114,9 +115,7 @@ export function AuthorBoard({
       className={clsx("w-full max-w-[420px] mx-auto block rounded-2xl border-2 touch-none select-none shadow-sm",
         tool.kind === "drawZone" ? "border-[#FFD166] cursor-crosshair" : "border-[rgba(20,60,35,.15)]")}
       onPointerDown={onSvgPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerLeave={onPointerUp}
+      onPointerUp={onSvgPointerUpZone}
     >
       {Array.from({ length: 10 }).map((_, i) => (
         <rect key={i} x={0} y={(VIEW_H / 10) * i} width={VIEW_W} height={VIEW_H / 10} fill={i % 2 ? "#2F9354" : "#2B8A4E"} />

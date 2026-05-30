@@ -145,6 +145,8 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
   );
 
   // ---- pointer handlers ----
+  // Drag via window-level listeners attached on pointerdown — robust across SVG
+  // token re-renders (setPointerCapture on re-rendered SVG nodes is unreliable).
   const onPointerDownObj = (id: string, end?: "tip" | "tail") => (e: React.PointerEvent) => {
     if (reveal) return;
     const isDraggable = draggableIds.includes(id) || (mode === "arrow" && id === arrowId);
@@ -152,27 +154,26 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
     e.preventDefault();
     e.stopPropagation();
     drag.current = { id, end };
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-  };
 
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    const { x, y } = toLab(e.clientX, e.clientY);
-    const { id, end } = drag.current;
-    setObjects((prev) =>
-      prev.map((o) => {
-        if (o.id !== id) return o;
-        if (o.type === "arrow") {
-          return end === "tail" ? { ...o, x1: x, y1: y } : { ...o, x2: x, y2: y };
-        }
-        return { ...o, x, y };
-      })
-    );
-  };
-
-  const onPointerUp = () => {
-    if (!drag.current) return;
-    drag.current = null;
+    const move = (ev: PointerEvent) => {
+      if (!drag.current) return;
+      const { x, y } = toLab(ev.clientX, ev.clientY);
+      const { id: did, end: dend } = drag.current;
+      setObjects((prev) =>
+        prev.map((o) => {
+          if (o.id !== did) return o;
+          if (o.type === "arrow") return dend === "tail" ? { ...o, x1: x, y1: y } : { ...o, x2: x, y2: y };
+          return { ...o, x, y };
+        })
+      );
+    };
+    const up = () => {
+      drag.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   };
 
   // Tap a player in info mode to reveal its card. Accumulate via functional
@@ -260,9 +261,6 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
         ref={svgRef}
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         className="w-full max-w-[420px] mx-auto block rounded-2xl border-2 border-[rgba(20,60,35,.15)] touch-none select-none shadow-sm"
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
       >
         {/* Striped grass (horizontal bands up the pitch) */}
         {Array.from({ length: 10 }).map((_, i) => (
