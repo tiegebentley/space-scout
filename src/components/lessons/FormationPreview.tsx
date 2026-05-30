@@ -190,14 +190,19 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
         const blue = z.team === "us";
         const sel = z.id === selectedRuleId;
         const interactive = !!onUpdateRule;
+        // Only the SELECTED rule's box is editable (move/resize/delete). Unselected
+        // boxes are locked: view-only, pointer-through, and dimmed — so you can't
+        // accidentally drag a box you didn't pick in the rule list.
+        const editable = interactive && sel;
         return (
           <g key={z.id}>
             <rect x={x} y={y} width={w} height={h}
               fill={blue ? "rgba(46,111,224,.12)" : "rgba(224,70,59,.12)"} stroke={blue ? "rgba(46,111,224,.8)" : "rgba(224,70,59,.8)"}
-              strokeWidth={sel ? 4 : 2} strokeDasharray="8 6" rx={8}
-              style={interactive ? { cursor: "move" } : undefined}
-              onPointerDown={interactive ? onRuleDown(z, "move") : undefined} />
-            {interactive && sel && <>
+              strokeWidth={sel ? 4 : 2} strokeDasharray="8 6" rx={8} opacity={interactive && !sel ? 0.55 : 1}
+              style={editable ? { cursor: "move" } : undefined}
+              pointerEvents={editable ? undefined : "none"}
+              onPointerDown={editable ? onRuleDown(z, "move") : undefined} />
+            {editable && <>
               <circle cx={x + w} cy={y + h} r={10} fill="#FFD166" stroke="#16241c" strokeWidth={2} style={{ cursor: "nwse-resize" }} onPointerDown={onRuleDown(z, "se")} />
               <g style={{ cursor: "pointer" }} onPointerDown={(e) => { e.stopPropagation(); onDeleteRule?.(z.id); }}>
                 <circle cx={x + w} cy={y} r={10} fill="#E0463B" stroke="#fff" strokeWidth={2} />
