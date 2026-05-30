@@ -152,6 +152,15 @@ export default function PlayPage() {
     [customPresets]
   );
 
+  // Built-ins to show in the dropdown: hide any whose name a custom preset has
+  // shadowed (you saved over it), so there's only ONE entry per name — yours.
+  // Otherwise two identically-named "Stay Wide" options appear and picking the
+  // built-in loads the original, making your saved edits look lost.
+  const visibleBuiltins = useMemo(() => {
+    const customNames = new Set(customPresets.map((p) => p.name.toLowerCase()));
+    return BUILTIN_PRESETS.filter((p) => !customNames.has(p.name.toLowerCase()));
+  }, [customPresets]);
+
   // Apply a new zoneRules state and record it in history.
   //  - `key === null` (default): a discrete edit → always its own undo step.
   //  - `key === <string>`: a continuous edit → consecutive commits sharing the
@@ -681,11 +690,13 @@ export default function PlayPage() {
             className="w-full rounded-xl border-2 border-[rgba(20,60,35,.1)] px-3 py-2.5 text-sm font-[Fredoka] font-semibold bg-white cursor-pointer mb-2"
           >
             <option value="none">No rules (free play)</option>
-            <optgroup label="Built-in Presets">
-              {BUILTIN_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </optgroup>
+            {visibleBuiltins.length > 0 && (
+              <optgroup label="Built-in Presets">
+                {visibleBuiltins.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </optgroup>
+            )}
             {customPresets.length > 0 && (
               <optgroup label="Your Presets">
                 {customPresets.map((p) => (
