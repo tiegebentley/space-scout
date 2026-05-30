@@ -16,6 +16,7 @@ import { LAB_PITCH } from "@/types/lessons";
 import type { BoardObject, Scenario } from "@/types/lessons";
 import { gradeMoveScenario, gradeArrowScenario } from "@/engine/scenarioGrader";
 import { labToScreen, screenToLab, VIEW_W, VIEW_H } from "./boardTransform";
+import { BoardGoals } from "./BoardGoals";
 
 const PW = LAB_PITCH.w;
 const HOME = "#2E6FE0";
@@ -268,9 +269,10 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
         <rect x={6} y={6} width={VIEW_W - 12} height={VIEW_H - 12} fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={3} rx={10} />
         <line x1={6} y1={VIEW_H / 2} x2={VIEW_W - 6} y2={VIEW_H / 2} stroke="rgba(255,255,255,.7)" strokeWidth={3} />
         <circle cx={VIEW_W / 2} cy={VIEW_H / 2} r={70} fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={3} />
-        {/* Goal boxes top/bottom */}
-        <rect x={VIEW_W / 2 - 130} y={6} width={260} height={120} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={3} />
-        <rect x={VIEW_W / 2 - 130} y={VIEW_H - 126} width={260} height={120} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={3} />
+        {/* Penalty boxes + distinguishable goals top/bottom */}
+        <rect x={VIEW_W / 2 - 130} y={6} width={260} height={110} fill="none" stroke="rgba(255,255,255,.55)" strokeWidth={3} />
+        <rect x={VIEW_W / 2 - 130} y={VIEW_H - 116} width={260} height={110} fill="none" stroke="rgba(255,255,255,.55)" strokeWidth={3} />
+        <BoardGoals />
 
 
         {/* Arrow target zone on reveal (arrow mode) */}

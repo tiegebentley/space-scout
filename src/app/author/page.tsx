@@ -681,9 +681,14 @@ function AuthorEditor() {
             <div className="grid grid-cols-2 gap-2">
               <button onClick={onTest} className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer">▶ Test</button>
               <button onClick={() => addScenario(cur.stepKind)} className="rounded-xl bg-white border-2 border-[#2B8A4E] text-[#2B8A4E] font-extrabold text-sm py-2.5 cursor-pointer">＋ Add Step</button>
-              <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer">💾 {editingOwnId ? "Update" : "Save"} lesson</button>
+              <button
+                onClick={() => { if (scenarios.length > 1 && confirm(`Delete step ${idx + 1}?`)) delScenario(); else if (scenarios.length <= 1) toast("A lesson needs at least one step"); }}
+                disabled={scenarios.length <= 1}
+                className="rounded-xl bg-white border-2 border-[#E0463B] text-[#E0463B] font-extrabold text-sm py-2.5 cursor-pointer disabled:opacity-35 disabled:cursor-default col-span-2"
+              >🗑 Delete this step</button>
+              <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer col-span-2">💾 {editingOwnId ? "Update" : "Save"} lesson</button>
               <button onClick={onExport} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Export JSON</button>
-              <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer col-span-2">Import JSON</button>
+              <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Import JSON</button>
               <input ref={fileRef} type="file" accept="application/json" onChange={onImport} className="hidden" />
             </div>
 
