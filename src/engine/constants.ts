@@ -14,6 +14,11 @@ export const GX1 = W / 2 + GOAL_W / 2;
 export const ATT_THIRD = H * 0.36;
 export const CONTACT = 22;
 
+// When a player loses the ball to the other team (tackle, interception, or a
+// loose ball picked up by the opposition) they must pause before they can
+// engage again. ~2 seconds at 60fps (frozenTimer ticks once per frame).
+export const TURNOVER_FREEZE = 120;
+
 // Penalty box geometry — MUST match the box drawn in renderer (boxW/boxH).
 // Shots are only allowed from inside this area.
 export const BOX_W = 260;          // box width (px), centered on goal

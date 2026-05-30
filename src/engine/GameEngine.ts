@@ -4,6 +4,7 @@ import type {
 } from "@/types/game";
 import {
   W, H, L, R, TOP, BOT, GX0, GX1, GOAL_W, ATT_THIRD, CONTACT, BOX_H, BOX_HALF_W,
+  TURNOVER_FREEZE,
   FORMATIONS, SPEED_MAP, ROLE_BOUNDS, THIRD_1_Y, THIRD_2_Y,
   GOALKICK_SETUPS, type GoalkickSetupDef,
   DEFAULT_USER_ROLE, JERSEY_NUMBERS, WINGER_X_BOUNDS,
@@ -716,9 +717,9 @@ export class GameEngine {
   private resumeFromRestart() {
     this.gstate = "live";
     if (this.restart?.taker) {
-      this.giveBall(this.restart.taker);
+      this.giveBall(this.restart.taker, true);
     } else {
-      this.giveBall(this.poss === "us" ? this.mates[0] : this.opps[0]);
+      this.giveBall(this.poss === "us" ? this.mates[0] : this.opps[0], true);
     }
     this.passCooldown = Math.round(30 / this.PACE);
     this.emitPill(this.poss === "us" ? "Your ball" : "Reds attacking", this.poss);
@@ -739,7 +740,21 @@ export class GameEngine {
     return best;
   }
 
-  protected giveBall(p: Player) {
+  // `fromRestart` skips the turnover-freeze (kickoffs, throw-ins, goal kicks
+  // aren't "losing the ball" — nobody should be penalised on a restart).
+  protected giveBall(p: Player, fromRestart = false) {
+    const prev = this.ball.owner;
+    // Turnover rule: whenever possession changes to the OTHER team during open
+    // play, the player who lost it pauses before they can engage again. This is
+    // the single chokepoint for every possession change (tackle, interception,
+    // AND loose-ball pickup), so the freeze can't be bypassed.
+    if (!fromRestart && prev && prev !== p && prev.side !== p.side && !prev.gk) {
+      this.recentLoser = prev;
+      this.recentLoserTimer = Math.round(TURNOVER_FREEZE / Math.max(0.5, this.PACE));
+      prev.frozenTimer = TURNOVER_FREEZE;
+      prev.backoff = Math.round((TURNOVER_FREEZE * 0.75) / Math.max(0.5, this.PACE));
+    }
+
     this.ball.owner = p;
     this.ball.flying = false;
     this.ball.x = p.x;
@@ -759,15 +774,11 @@ export class GameEngine {
     );
 
     if (loser && loser !== p && !loser.gk) {
-      this.recentLoser = loser;
-      this.recentLoserTimer = Math.round(120 / Math.max(0.5, this.PACE));
-      // Freeze the loser in place for 2 seconds
-      loser.frozenTimer = 120;
-      // Push loser well clear so the carrier has space to dribble away
+      // Push loser well clear so the carrier has space to dribble away.
+      // (The turnover freeze itself is applied centrally in giveBall.)
       const pushAng = Math.atan2(loser.y - p.y, loser.x - p.x);
       loser.x = clamp(loser.x + Math.cos(pushAng) * 45, L, R);
       loser.y = clamp(loser.y + Math.sin(pushAng) * 45, TOP, BOT);
-      loser.backoff = Math.round(90 / Math.max(0.5, this.PACE));
     }
 
     this.giveBall(p);
