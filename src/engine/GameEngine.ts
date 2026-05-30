@@ -171,33 +171,85 @@ export class GameEngine {
     return true;
   }
 
-  // Clamp player to any zone rules configured for this match
-  private clampToZoneRules(p: Player): void {
-    if (p.gk) return;
+  // The active zone rule governing this player right now, or null. Last matching
+  // active rule wins (row order = priority): scanning in reverse and taking the
+  // first hit means exactly ONE box governs the player each frame, so two
+  // non-overlapping conditional layers can never fight over position.
+  private activeZoneRuleFor(p: Player): ZoneRule | null {
+    if (p.gk) return null;
     const rules = this.config.zoneRules;
-    if (!rules || rules.length === 0) return;
-
+    if (!rules || rules.length === 0) return null;
     const roleKey = this.roleKeyOf(p);
-
-    // Last matching active rule wins: row order is priority. Scanning in reverse
-    // and clamping to the first hit means exactly ONE box governs the player each
-    // frame — two non-overlapping layers can never fight over their position.
     for (let i = rules.length - 1; i >= 0; i--) {
       const rule = rules[i];
       if (rule.team !== p.side || rule.role !== roleKey) continue;
       if (!this.zoneRuleActive(rule)) continue;
+      return rule;
+    }
+    return null;
+  }
 
-      // Convert fractional bounds to screen coordinates
-      const screenXMin = L + (R - L) * rule.xMin;
-      const screenXMax = L + (R - L) * rule.xMax;
-      const screenYMin = depthToY(p.side, rule.yMax);
-      const screenYMax = depthToY(p.side, rule.yMin);
-      const yLo = Math.min(screenYMin, screenYMax);
-      const yHi = Math.max(screenYMin, screenYMax);
+  // Hard-clamp a player inside their active zone box. Always safe to call — it's
+  // the boundary guarantee, run after movement each frame.
+  private clampToZoneRules(p: Player): void {
+    const rule = this.activeZoneRuleFor(p);
+    if (!rule) return;
+    const screenXMin = L + (R - L) * rule.xMin;
+    const screenXMax = L + (R - L) * rule.xMax;
+    const screenYMin = depthToY(p.side, rule.yMax);
+    const screenYMax = depthToY(p.side, rule.yMin);
+    const yLo = Math.min(screenYMin, screenYMax);
+    const yHi = Math.max(screenYMin, screenYMax);
+    p.x = clamp(p.x, screenXMin, screenXMax);
+    p.y = clamp(p.y, yLo, yHi);
+  }
 
-      p.x = clamp(p.x, screenXMin, screenXMax);
-      p.y = clamp(p.y, yLo, yHi);
-      return; // winner found — ignore lower-priority rules for this player
+  // Move a player AROUND inside their zone box so they use the whole space,
+  // instead of parking on the nearest edge. Called only for idle players (not
+  // the ball-chaser / presser). Honors the rule's `movement` mode:
+  //   roam (default) → drift to random interior points, re-rolled on arrival/timeout
+  //   center         → ease toward the box middle
+  //   free           → do nothing (the box stays a pure boundary)
+  // Returns true if it took control of the player's motion this frame.
+  private roamInZone(p: Player, rule: ZoneRule): boolean {
+    const mode = rule.movement ?? "roam";
+    if (mode === "free") return false;
+
+    const xMin = L + (R - L) * rule.xMin;
+    const xMax = L + (R - L) * rule.xMax;
+    const yA = depthToY(p.side, rule.yMax);
+    const yB = depthToY(p.side, rule.yMin);
+    const yLo = Math.min(yA, yB), yHi = Math.max(yA, yB);
+    const sp = 1.4 * this.PACE; // gentle wander pace (slower than chasing)
+
+    if (mode === "center") {
+      this.easeToward(p, (xMin + xMax) / 2, (yLo + yHi) / 2, sp);
+      return true;
+    }
+
+    // roam: keep a small inset so targets aren't right on the edge.
+    const insetX = Math.min(16, (xMax - xMin) / 2);
+    const insetY = Math.min(16, (yHi - yLo) / 2);
+    const haveTarget = p.roamX !== undefined && p.roamY !== undefined;
+    const reached = haveTarget && Math.hypot(p.roamX! - p.x, p.roamY! - p.y) < 8;
+    p.roamTimer = (p.roamTimer ?? 0) - 1;
+    if (!haveTarget || reached || p.roamTimer <= 0) {
+      p.roamX = xMin + insetX + Math.random() * Math.max(0, xMax - xMin - 2 * insetX);
+      p.roamY = yLo + insetY + Math.random() * Math.max(0, yHi - yLo - 2 * insetY);
+      p.roamTimer = 90 + Math.floor(Math.random() * 150); // ~1.5-4s at 60fps
+    }
+    this.easeToward(p, p.roamX!, p.roamY!, sp);
+    return true;
+  }
+
+  // Step a player toward (tx,ty), capped at speed `sp`; updates facing.
+  private easeToward(p: Player, tx: number, ty: number, sp: number): void {
+    const dx = tx - p.x, dy = ty - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 1) {
+      p.x += (dx / d) * Math.min(d, sp);
+      p.y += (dy / d) * Math.min(d, sp);
+      p.face = Math.atan2(dy, dx);
     }
   }
 
@@ -916,12 +968,20 @@ export class GameEngine {
       const backoff = m.backoff && m.backoff > 0;
       if (backoff) m.backoff!--;
 
-      const sp = (m === ballChaser ? (attacking ? 2.1 : 2.8) : (attacking ? 1.8 : 1.6)) * this.PACE * (backoff ? 0.5 : 1);
-      const ang = Math.atan2(ty - m.y, tx - m.x);
-      const dd = Math.hypot(tx - m.x, ty - m.y);
-      if (dd > 1.5) {
-        m.x += Math.cos(ang) * Math.min(dd, sp);
-        m.y += Math.sin(ang) * Math.min(dd, sp);
+      // If this idle player (not the ball-chaser/presser) sits in a zone box set
+      // to roam/center, let it wander the box instead of parking on the tactic
+      // target — so it uses the whole space. The ball-chaser keeps its job.
+      const zr = m === ballChaser ? null : this.activeZoneRuleFor(m);
+      const roamed = zr ? this.roamInZone(m, zr) : false;
+
+      if (!roamed) {
+        const sp = (m === ballChaser ? (attacking ? 2.1 : 2.8) : (attacking ? 1.8 : 1.6)) * this.PACE * (backoff ? 0.5 : 1);
+        const ang = Math.atan2(ty - m.y, tx - m.x);
+        const dd = Math.hypot(tx - m.x, ty - m.y);
+        if (dd > 1.5) {
+          m.x += Math.cos(ang) * Math.min(dd, sp);
+          m.y += Math.sin(ang) * Math.min(dd, sp);
+        }
       }
 
       this.clampToRoleBounds(m);

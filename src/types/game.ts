@@ -19,6 +19,11 @@ export interface Player {
   holdT?: number;
   frozenTimer?: number;
   home: RoleConfig;
+  // Roam target inside the player's zone box (engine-managed), so they use the
+  // whole box instead of pinning to an edge. Re-rolled on arrival / timeout.
+  roamX?: number;
+  roamY?: number;
+  roamTimer?: number;
 }
 
 export type PlayerRole = "you" | "lw" | "rw" | "hold" | "fwd" | "gk" | "lcm" | "rcm";
@@ -188,6 +193,13 @@ export type ZoneCondition =
   | "ball_opp_half"  // ball is in this team's attacking half
   | "carrier_is";    // a specific player (carrierTeam + carrierRole) has the ball
 
+// How a player uses their zone box when they have no active job (not chasing
+// the ball, pressing, or making a run). Omitted = "roam" (the default).
+//  - roam:   drift to random points inside the box → uses the whole space
+//  - center: ease toward the middle of the box
+//  - free:   no roaming; the box is only a boundary, AI tactic/ball logic moves them
+export type ZoneMovement = "roam" | "center" | "free";
+
 export interface ZoneRule {
   id: string;
   team: "us" | "them";
@@ -203,6 +215,8 @@ export interface ZoneRule {
   // this rule to be active.
   carrierTeam?: "us" | "them";
   carrierRole?: string;
+  // How the player moves inside the box. Omitted = "roam".
+  movement?: ZoneMovement;
 }
 
 export interface RulePreset {

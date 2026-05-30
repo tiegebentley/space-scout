@@ -7,7 +7,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS } from "@/engine/constants";
 import { ALL_TACTICS } from "@/engine/tactics/presets";
-import type { ZoneRule, RulePreset, ZoneCondition } from "@/types/game";
+import type { ZoneRule, RulePreset, ZoneCondition, ZoneMovement } from "@/types/game";
 
 const FORMATS = [
   { id: "3v3" as const, label: "3v3", desc: "Fast & tight, great for learning" },
@@ -879,6 +879,20 @@ export default function PlayPage() {
                       <option value="ball_own_half">Ball in our half</option>
                       <option value="ball_opp_half">Ball in their half</option>
                       <option value="carrier_is">A specific player has the ball…</option>
+                    </select>
+                  </div>
+
+                  {/* Movement — how the player uses the box when they have no active job */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-extrabold text-[#5d6f63] w-8">Move</span>
+                    <select
+                      value={rule.movement ?? "roam"}
+                      onChange={(e) => updateZoneRule(rule.id, { movement: e.target.value as ZoneMovement })}
+                      className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white cursor-pointer"
+                    >
+                      <option value="roam">Roam the whole box</option>
+                      <option value="center">Hold the center</option>
+                      <option value="free">Free (box is just a limit)</option>
                     </select>
                   </div>
 
