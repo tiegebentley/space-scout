@@ -1,9 +1,9 @@
 "use client";
 // Editable scenario board for the author. Same portrait orientation + lab-coord
 // model as ScenarioBoard, but every object is movable and you can add/remove
-// players, the ball, and an answer arrow, plus draw target zones for the answer
-// players. Emits changes back to the author page via callbacks.
-import { useCallback, useEffect, useRef } from "react";
+// players, the ball, and an answer arrow, plus draw / move / resize / delete the
+// target zones for answer players. Emits changes back to the author page.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { LAB_PITCH } from "@/types/lessons";
 import type { BoardObject, Zone } from "@/types/lessons";
@@ -14,6 +14,7 @@ const PH = LAB_PITCH.h;
 const HOME = "#2E6FE0";
 const AWAY = "#E0463B";
 const R = 22;
+const GOAL_HALF = 110; // goal mouth half-width (lab y units)
 
 export type AuthorTool =
   | { kind: "select" }
@@ -27,17 +28,22 @@ interface Props {
   arrowId: string | null;              // the answer arrow (arrow mode)
   zones: Record<string, Zone | Zone[]>;
   setZone: (id: string, z: Zone) => void;
+  updateZone?: (id: string, z: Zone) => void;  // move/resize an existing zone
+  removeZone?: (id: string) => void;           // delete a zone
   tool: AuthorTool;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }
 
 export function AuthorBoard({
-  objects, setObjects, answerMode, answerIds, arrowId, zones, setZone, tool, selectedId, onSelect,
+  objects, setObjects, answerMode, answerIds, arrowId, zones, setZone, updateZone, removeZone, tool, selectedId, onSelect,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const drag = useRef<{ id: string; end?: "tip" | "tail" } | null>(null);
-  const zoneDraw = useRef<{ forId: string; x0: number; y0: number } | null>(null);
+  // Live preview of the rectangle being drawn (lab coords), for the cursor box.
+  const [drawPreview, setDrawPreview] = useState<Zone | null>(null);
+  // A zone selected for editing (move/resize/delete) — keyed by answer-player id.
+  const [editZoneId, setEditZoneId] = useState<string | null>(null);
   // Keep latest objects/setObjects for the window-level drag listeners.
   const objectsRef = useRef(objects);
   const setObjectsRef = useRef(setObjects);
@@ -53,13 +59,55 @@ export function AuthorBoard({
     return { x: clamp(x, 0, PW), y: clamp(y, 0, PH) };
   }, []);
 
+  const rectFrom = (x0: number, y0: number, x: number, y: number): Zone => ({
+    x: Math.round(Math.min(x0, x)), y: Math.round(Math.min(y0, y)),
+    w: Math.round(Math.abs(x - x0)), h: Math.round(Math.abs(y - y0)),
+  });
+
+  // Start a zone draw. A LIVE preview rectangle follows the cursor (so you can
+  // see the box as you drag); commit on release. Window listeners keep it robust.
   const onSvgPointerDown = (e: React.PointerEvent) => {
-    // Start a zone-draw if the active tool is drawZone (and not on a token).
-    if (tool.kind === "drawZone") {
-      const { x, y } = toLab(e.clientX, e.clientY);
-      zoneDraw.current = { forId: tool.forId, x0: x, y0: y };
-      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-    }
+    if (tool.kind !== "drawZone") return;
+    const start = toLab(e.clientX, e.clientY);
+    const forId = tool.forId;
+    setDrawPreview({ x: start.x, y: start.y, w: 0, h: 0 });
+    const move = (ev: PointerEvent) => {
+      const p = toLab(ev.clientX, ev.clientY);
+      setDrawPreview(rectFrom(start.x, start.y, p.x, p.y));
+    };
+    const up = (ev: PointerEvent) => {
+      const p = toLab(ev.clientX, ev.clientY);
+      const rect = rectFrom(start.x, start.y, p.x, p.y);
+      setDrawPreview(null);
+      if (rect.w > 20 && rect.h > 20) { setZone(forId, rect); setEditZoneId(forId); }
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  // Drag/resize an existing zone (move = whole box; corner = resize).
+  const onZonePointerDown = (id: string, z: Zone, handle: "move" | "se") => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    setEditZoneId(id);
+    onSelect(null);
+    const start = toLab(e.clientX, e.clientY);
+    const orig = { ...z };
+    const move = (ev: PointerEvent) => {
+      const p = toLab(ev.clientX, ev.clientY);
+      const dx = p.x - start.x, dy = p.y - start.y;
+      let next: Zone;
+      if (handle === "move") {
+        next = { x: clamp(orig.x + dx, 0, PW - orig.w), y: clamp(orig.y + dy, 0, PH - orig.h), w: orig.w, h: orig.h };
+      } else {
+        next = { x: orig.x, y: orig.y, w: Math.max(30, orig.w + dx), h: Math.max(30, orig.h + dy) };
+      }
+      (updateZone ?? setZone)(id, { x: Math.round(next.x), y: Math.round(next.y), w: Math.round(next.w), h: Math.round(next.h) });
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   };
 
   // Drag a token via window listeners (robust across re-renders).
@@ -83,28 +131,31 @@ export function AuthorBoard({
     window.addEventListener("pointerup", up);
   };
 
-  // Draw a zone via window listeners; commit on release.
-  const onSvgPointerUpZone = (e: React.PointerEvent) => {
-    if (!zoneDraw.current) return;
-    const { x, y } = toLab(e.clientX, e.clientY);
-    const z = zoneDraw.current;
-    const rect: Zone = {
-      x: Math.round(Math.min(z.x0, x)),
-      y: Math.round(Math.min(z.y0, y)),
-      w: Math.round(Math.abs(x - z.x0)),
-      h: Math.round(Math.abs(y - z.y0)),
-    };
-    if (rect.w > 20 && rect.h > 20) setZone(z.forId, rect);
-    zoneDraw.current = null;
-  };
-
-  const zoneRect = (z: Zone, key: string, active: boolean) => {
+  // An editable zone: filled rect (drag to move) + SE resize handle + delete ×.
+  // Screen-space rect from the lab rect (the two corners after rotation).
+  const editableZone = (id: string, z: Zone) => {
     const c1 = labToScreen(z.x, z.y), c2 = labToScreen(z.x + z.w, z.y + z.h);
+    const x = Math.min(c1.sx, c2.sx), y = Math.min(c1.sy, c2.sy);
+    const w = Math.abs(c2.sx - c1.sx), h = Math.abs(c2.sy - c1.sy);
+    const active = editZoneId === id || (tool.kind === "drawZone" && tool.forId === id);
     return (
-      <rect key={key} x={Math.min(c1.sx, c2.sx)} y={Math.min(c1.sy, c2.sy)}
-        width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)}
-        fill={active ? "rgba(255,209,102,.22)" : "rgba(255,209,102,.12)"}
-        stroke="rgba(255,209,102,.9)" strokeWidth={3} strokeDasharray="10 8" rx={10} />
+      <g key={`z-${id}`}>
+        <rect x={x} y={y} width={w} height={h}
+          fill={active ? "rgba(255,209,102,.28)" : "rgba(255,209,102,.14)"}
+          stroke="#FFD166" strokeWidth={3} strokeDasharray="10 8" rx={10}
+          style={{ cursor: "move" }}
+          onPointerDown={onZonePointerDown(id, z, "move")} />
+        {active && <>
+          {/* SE resize handle */}
+          <circle cx={x + w} cy={y + h} r={11} fill="#FFD166" stroke="#16241c" strokeWidth={2}
+            style={{ cursor: "nwse-resize" }} onPointerDown={onZonePointerDown(id, z, "se")} />
+          {/* Delete button (top-right) */}
+          <g style={{ cursor: "pointer" }} onPointerDown={(e) => { e.stopPropagation(); removeZone?.(id); if (editZoneId === id) setEditZoneId(null); }}>
+            <circle cx={x + w} cy={y} r={11} fill="#E0463B" stroke="#fff" strokeWidth={2} />
+            <text x={x + w} y={y + 4} textAnchor="middle" fontSize={14} fontWeight={900} fill="#fff" style={{ pointerEvents: "none" }}>×</text>
+          </g>
+        </>}
+      </g>
     );
   };
 
@@ -115,7 +166,6 @@ export function AuthorBoard({
       className={clsx("w-full max-w-[420px] mx-auto block rounded-2xl border-2 touch-none select-none shadow-sm",
         tool.kind === "drawZone" ? "border-[#FFD166] cursor-crosshair" : "border-[rgba(20,60,35,.15)]")}
       onPointerDown={onSvgPointerDown}
-      onPointerUp={onSvgPointerUpZone}
     >
       {Array.from({ length: 10 }).map((_, i) => (
         <rect key={i} x={0} y={(VIEW_H / 10) * i} width={VIEW_W} height={VIEW_H / 10} fill={i % 2 ? "#2F9354" : "#2B8A4E"} />
@@ -123,14 +173,28 @@ export function AuthorBoard({
       <rect x={6} y={6} width={VIEW_W - 12} height={VIEW_H - 12} fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={3} rx={10} />
       <line x1={6} y1={VIEW_H / 2} x2={VIEW_W - 6} y2={VIEW_H / 2} stroke="rgba(255,255,255,.7)" strokeWidth={3} />
       <circle cx={VIEW_W / 2} cy={VIEW_H / 2} r={70} fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={3} />
+      {/* Penalty boxes + goals, top (their goal) and bottom (our goal) */}
+      <rect x={VIEW_W / 2 - 130} y={6} width={260} height={110} fill="none" stroke="rgba(255,255,255,.55)" strokeWidth={3} />
+      <rect x={VIEW_W / 2 - 130} y={VIEW_H - 116} width={260} height={110} fill="none" stroke="rgba(255,255,255,.55)" strokeWidth={3} />
+      {/* Goal mouths (the actual goals) */}
+      <rect x={VIEW_W / 2 - GOAL_HALF} y={-2} width={GOAL_HALF * 2} height={12} fill="rgba(255,255,255,.92)" stroke="#16241c" strokeWidth={2} />
+      <rect x={VIEW_W / 2 - GOAL_HALF} y={VIEW_H - 10} width={GOAL_HALF * 2} height={12} fill="rgba(255,255,255,.92)" stroke="#16241c" strokeWidth={2} />
 
-      {/* Existing zones for answer players */}
+      {/* Existing zones for answer players — editable (move / resize / delete) */}
       {answerMode === "move" && answerIds.map((id) => {
         const z = zones[id];
         if (!z) return null;
-        const arr = Array.isArray(z) ? z : [z];
-        return arr.map((zz, i) => zoneRect(zz, `z-${id}-${i}`, tool.kind === "drawZone" && tool.forId === id));
+        const zz = Array.isArray(z) ? z[0] : z;
+        return zz ? editableZone(id, zz) : null;
       })}
+
+      {/* Live preview rectangle while drawing (the cursor box you see as you drag) */}
+      {drawPreview && (() => {
+        const c1 = labToScreen(drawPreview.x, drawPreview.y);
+        const c2 = labToScreen(drawPreview.x + drawPreview.w, drawPreview.y + drawPreview.h);
+        return <rect x={Math.min(c1.sx, c2.sx)} y={Math.min(c1.sy, c2.sy)} width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)}
+          fill="rgba(255,209,102,.30)" stroke="#FFD166" strokeWidth={4} strokeDasharray="8 6" rx={8} pointerEvents="none" />;
+      })()}
 
       {/* Tokens */}
       {objects.map((o) => {

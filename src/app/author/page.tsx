@@ -277,6 +277,9 @@ function AuthorEditor() {
   };
   const setObjects = (next: BoardObject[]) => patch({ objects: next });
   const setZone = (id: string, z: Zone) => { patch({ zones: { ...cur.zones, [id]: z } }); setTool({ kind: "select" }); toast("Zone set"); };
+  // Move/resize an existing zone (no tool reset — stays in edit/select mode).
+  const updateZone = (id: string, z: Zone) => patch({ zones: { ...cur.zones, [id]: z } });
+  const removeZone = (id: string) => { const next = { ...cur.zones }; delete next[id]; patch({ zones: next }); toast("Zone removed"); };
 
   const toggleAnswer = (id: string) => {
     const has = cur.answerIds.includes(id);
@@ -424,7 +427,7 @@ function AuthorEditor() {
               <AuthorBoard
                 objects={cur.objects} setObjects={setObjects}
                 answerMode={cur.mode} answerIds={cur.answerIds} arrowId={cur.arrowId}
-                zones={cur.zones} setZone={setZone}
+                zones={cur.zones} setZone={setZone} updateZone={updateZone} removeZone={removeZone}
                 tool={tool} selectedId={selectedId} onSelect={setSelectedId}
               />
             ) : (
