@@ -16,6 +16,7 @@ import { LessonPlayer } from "@/components/lessons/LessonPlayer";
 import { useGameStore } from "@/stores/gameStore";
 import { getLesson } from "@/data/lessons";
 import { W, H, JERSEY_NUMBERS, ROLE_LABELS } from "@/engine/constants";
+import { BUILTIN_PRESETS } from "@/data/zonePresets";
 
 // Jersey-number label for a role key, e.g. "hold" → "#6 Holding Mid (6)".
 const roleLabel = (r: string) => `#${JERSEY_NUMBERS[r] ?? "?"} ${ROLE_LABELS[r] ?? r}`;
@@ -235,6 +236,8 @@ export default function AuthorPage() {
 function AuthorEditor() {
   const saveCustomLesson = useGameStore((s) => s.saveCustomLesson);
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
+  const customPresets = useGameStore((s) => s.customPresets) ?? [];
+  const allPresets = [...BUILTIN_PRESETS, ...customPresets];
   const searchParams = useSearchParams();
   const editParam = searchParams.get("edit");
 
@@ -317,6 +320,13 @@ function AuthorEditor() {
   // ---- scenario pager ----
   const addScenario = (kind: StepKind = "instructional") => { setScenarios([...scenarios, blankScenario(kind)]); setIdx(scenarios.length); setSelectedId(null); };
   const setStepKind = (kind: StepKind) => patch({ stepKind: kind });
+  // Apply a saved zone-rule preset (built-in or custom) to this step's boundaries.
+  const applyPreset = (presetId: string) => {
+    if (!presetId) { patch({ zoneRules: [] }); return; }
+    const p = allPresets.find((x) => x.id === presetId);
+    if (!p) return;
+    patch({ zoneRules: p.rules.map((r) => ({ ...r, id: nid("zr") })) });
+  };
   const delScenario = () => {
     if (scenarios.length <= 1) { toast("A lesson needs at least one scenario"); return; }
     const next = scenarios.filter((_, i) => i !== idx);
@@ -425,6 +435,34 @@ function AuthorEditor() {
 
   const GROUP = "rounded-xl border border-[rgba(20,60,35,.12)] bg-[#f8faf8] p-3 space-y-2";
   const GLABEL = "text-[10px] font-extrabold tracking-wide text-[#5d6f63]";
+
+  // BOUNDARIES & RULES group (shared by Scenario + Game) — apply a saved zone-rule
+  // preset built on /play. Which preset is selected is inferred from the rule set.
+  const rulesGroup = (
+    <div className={GROUP}>
+      <p className={GLABEL}>BOUNDARIES &amp; RULES</p>
+      <select
+        value={allPresets.find((p) => JSON.stringify(p.rules.map((r) => ({ ...r, id: undefined }))) === JSON.stringify(cur.zoneRules.map((r) => ({ ...r, id: undefined }))))?.id ?? ""}
+        onChange={(e) => applyPreset(e.target.value)}
+        className="w-full rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white"
+      >
+        <option value="">No zone rules (free positions)</option>
+        {BUILTIN_PRESETS.length > 0 && (
+          <optgroup label="Built-in presets">
+            {BUILTIN_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </optgroup>
+        )}
+        {customPresets.length > 0 && (
+          <optgroup label="Your presets">
+            {customPresets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </optgroup>
+        )}
+      </select>
+      <p className="text-[10px] text-[#5d6f63]">
+        {cur.zoneRules.length > 0 ? `${cur.zoneRules.length} rule${cur.zoneRules.length !== 1 ? "s" : ""} applied — shown on the field.` : "Build & save presets in Play; apply them here."}
+      </p>
+    </div>
+  );
 
   return (
     <main className="flex-1 flex flex-col items-center p-4">
@@ -556,18 +594,22 @@ function AuthorEditor() {
                     </div>
                   )}
                 </div>
+                {rulesGroup}
               </>
             )}
 
             {/* ── GAME editor ── */}
             {cur.stepKind === "game" && (
-              <div className={GROUP}>
-                <p className={GLABEL}>MATCH SETUP</p>
-                <MatchSetupControls
-                  value={{ format: cur.format, userRole: cur.userRole, oppTacticId: cur.oppTacticId, duration: cur.duration, aiDifficulty: cur.aiDifficulty }}
-                  onChange={(p) => patch(p as Partial<DraftScenario>)}
-                />
-              </div>
+              <>
+                <div className={GROUP}>
+                  <p className={GLABEL}>MATCH SETUP</p>
+                  <MatchSetupControls
+                    value={{ format: cur.format, userRole: cur.userRole, oppTacticId: cur.oppTacticId, duration: cur.duration, aiDifficulty: cur.aiDifficulty }}
+                    onChange={(p) => patch(p as Partial<DraftScenario>)}
+                  />
+                </div>
+                {rulesGroup}
+              </>
             )}
 
             {/* ── SCENARIO / GAME shared text (title + intro) ── */}
