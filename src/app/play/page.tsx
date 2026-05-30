@@ -501,9 +501,10 @@ export default function PlayPage() {
 
           {/* Draw-template controls — what the next box drawn on the pitch is for */}
           <div id="zone-pitch-editor" className="rounded-xl border-2 border-[rgba(20,60,35,.1)] bg-[#f8faf8] p-2.5 mb-2 space-y-2 scroll-mt-4">
-            <div className="flex items-center justify-between">
+            {/* Sticky so undo/redo/save stay reachable while scrolling the rule list below. */}
+            <div className="flex items-center justify-between sticky top-0 z-10 -mx-2.5 -mt-2.5 px-2.5 pt-2.5 pb-2 bg-[#f8faf8] rounded-t-xl border-b border-[rgba(20,60,35,.08)]">
               <p className="text-[10px] font-extrabold tracking-wide text-[#5d6f63]">DRAW A ZONE</p>
-              {/* Undo / redo for zone edits */}
+              {/* Undo / redo / save for zone edits */}
               <div className="flex gap-1">
                 <button
                   onClick={undo}
