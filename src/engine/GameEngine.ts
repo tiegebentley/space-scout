@@ -1442,10 +1442,37 @@ export class GameEngine {
     const best = opts[0];
     if (!best) return;
 
-    // Back pass to keeper under heavy pressure deep in own half
+    const goalY = carrier.side === "us" ? TOP : BOT;
+    const distToGoal = Math.abs(carrier.y - goalY);
+    const enemies = this.enemiesOf(carrier.side);
+
+    // Is there open space to advance into? Check the lane straight ahead and the
+    // two flanks ahead of the carrier — if any is clear of defenders, they can
+    // attack forward (drive through, or go around their marker on the open side)
+    // and should NOT retreat.
+    const aheadClear = (offsetX: number): boolean => {
+      const tx = carrier.x + offsetX;
+      const ty = carrier.y + (goalY - carrier.y) * 0.35; // a point ~35% toward goal
+      for (const e of enemies) {
+        if (e.gk || (e.frozenTimer && e.frozenTimer > 0)) continue;
+        const eDepth = (carrier.y - e.y) * dir; // >0 = enemy is goal-ward of carrier
+        if (eDepth <= 0) continue;               // ignore defenders behind the carrier
+        if (segDist(e.x, e.y, carrier.x, carrier.y, tx, ty) < 38) return false;
+      }
+      return true;
+    };
+    const canGoForward = aheadClear(0);      // straight ahead is open
+    const canGoOutside = aheadClear(110);    // space to one flank
+    const canGoInside = aheadClear(-110);    // space to the other flank
+    const hasSpaceAhead = canGoForward || canGoOutside || canGoInside;
+
+    // Back pass to keeper ONLY as a last resort: genuinely under pressure
+    // (defender right on them), no space to advance or beat the marker, and no
+    // decent forward option. Otherwise the carrier backs off far too readily.
     const ownGoalY = carrier.side === "us" ? BOT : TOP;
     const deepInOwnHalf = Math.abs(carrier.y - ownGoalY) < H * 0.32;
-    if (deepInOwnHalf && pressure < 55 && (!best || best.s < 0.4)) {
+    const trapped = pressure < 30 && !hasSpaceAhead && best.s < 0.3;
+    if (deepInOwnHalf && trapped) {
       const gk = carrier.side === "us" ? this.gkUs : this.gkThem;
       if (gk && this.nearestEnemy(gk.x, gk.y, carrier.side) > 50) {
         this.doPass(carrier, gk);
@@ -1453,10 +1480,11 @@ export class GameEngine {
       }
     }
 
-    // On a breakaway (no defender ahead within range), keep dribbling — don't pass backwards
-    const goalY = carrier.side === "us" ? TOP : BOT;
-    const distToGoal = Math.abs(carrier.y - goalY);
-    const enemies = this.enemiesOf(carrier.side);
+    // Given space ahead, keep attacking — don't pass (especially not backwards).
+    // The carrier-lane dribble will drive them forward / around the defender.
+    if (hasSpaceAhead && pressure > 28 && distToGoal < H * 0.85) return;
+
+    // Breakaway: no defender ahead at all → definitely keep running.
     let defenderAhead = false;
     for (const e of enemies) {
       if (e.gk) continue;
