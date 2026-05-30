@@ -558,11 +558,16 @@ export class GameEngine {
     // Scenario override: force every NON-kickoff dead ball to a configured type
     // (e.g. "all restarts are throw-ins"). Kickoffs (first whistle / post-goal)
     // are left alone. Throw-ins snap to the nearer touchline.
-    const forced = this.config.scenarioSetup?.forcedRestart;
+    const setup = this.config.scenarioSetup;
+    const forced = setup?.forcedRestart;
     if (forced && r.type !== "kickoff" && forced !== r.type) {
       r = { ...r, type: forced };
-      if (this.config.scenarioSetup?.restartTeam) r.team = this.config.scenarioSetup.restartTeam;
+      if (setup?.restartTeam) r.team = setup.restartTeam;
       if (forced === "throwin") r.y = r.y < H / 2 ? TOP + 8 : BOT - 8;
+    }
+    // Fixed restart point (Scenario authoring): take it from here every time.
+    if (forced && setup?.restartX != null && setup?.restartY != null && r.type !== "kickoff") {
+      r = { ...r, x: clamp(setup.restartX, L, R), y: clamp(setup.restartY, TOP, BOT) };
     }
     this.gstate = "dead";
     this.restart = r;

@@ -91,6 +91,10 @@ export type ScenarioObjective =
 export interface ScenarioSetup {
   forcedRestart?: "throwin" | "goalkick" | "kickoff" | "corner";
   restartTeam?: "us" | "them";
+  // Where the restart is taken (engine coords). When set, the forced restart
+  // happens here instead of where the ball went out.
+  restartX?: number;
+  restartY?: number;
 }
 
 export interface MatchConfig {

@@ -15,9 +15,13 @@ import { MatchSetupControls } from "@/components/game/MatchSetupControls";
 import { LessonPlayer } from "@/components/lessons/LessonPlayer";
 import { useGameStore } from "@/stores/gameStore";
 import { getLesson } from "@/data/lessons";
-import { W, H } from "@/engine/constants";
+import { W, H, JERSEY_NUMBERS, ROLE_LABELS } from "@/engine/constants";
+
+// Jersey-number label for a role key, e.g. "hold" → "#6 Holding Mid (6)".
+const roleLabel = (r: string) => `#${JERSEY_NUMBERS[r] ?? "?"} ${ROLE_LABELS[r] ?? r}`;
+const OBJ_ROLES = ["gk", "hold", "lw", "rw", "fwd", "lcm", "rcm"];
 import type { BoardObject, Scenario, Zone, Lesson, Choice, InfoCard, LessonStep, ScenarioObjective } from "@/types/lessons";
-import type { ZoneRule } from "@/types/game";
+import type { ZoneRule, EngineRect } from "@/types/game";
 
 type Mode = "move" | "choice" | "arrow" | "info";
 // The three lesson modes a step can be.
@@ -55,6 +59,8 @@ interface DraftScenario {
   objType: ObjType;
   objTarget: number;
   objToRole: string;         // passCount: pass-to role; receiveInZone: receiver
+  objZone: EngineRect | null; // receiveInZone target zone (drawn on the field)
+  restartPoint: { x: number; y: number } | null; // where the forced restart is taken
   zoneRules: ZoneRule[];     // boundaries / rules for scenario & game steps
 }
 
@@ -73,7 +79,8 @@ function blankScenario(kind: StepKind = "instructional"): DraftScenario {
     liveBody: "", format: "5v5", userRole: "hold",
     oppTacticId: "possession", duration: 180000, aiDifficulty: "medium",
     forcedRestart: "",
-    objType: "passCount", objTarget: 5, objToRole: "gk", zoneRules: [],
+    objType: "passCount", objTarget: 5, objToRole: "gk",
+    objZone: null, restartPoint: null, zoneRules: [],
   };
 }
 
@@ -110,12 +117,13 @@ function toScenario(d: DraftScenario): Scenario {
 // Build the objective for a live-scenario draft.
 function draftToObjective(d: DraftScenario): ScenarioObjective {
   const t = Math.max(1, Math.round(d.objTarget));
+  const jn = (r: string) => `#${JERSEY_NUMBERS[r] ?? r}`;
   switch (d.objType) {
     case "passCount":
-      return { type: "passCount", label: d.objToRole ? `Passes to #${d.objToRole}` : "Complete passes", target: t, toRole: d.objToRole || undefined };
+      return { type: "passCount", label: d.objToRole ? `Passes to ${jn(d.objToRole)}` : "Complete passes", target: t, toRole: d.objToRole || undefined };
     case "receiveInZone":
-      // Default support box: central, in our (bottom) half.
-      return { type: "receiveInZone", label: `Receive in the zone`, role: d.objToRole || d.userRole, zone: { x: W / 2 - 150, y: H * 0.6, w: 300, h: H * 0.3 }, target: t };
+      // Use the drawn zone if the author placed one; else a default support box.
+      return { type: "receiveInZone", label: `${jn(d.objToRole || d.userRole)} receives in the zone`, role: d.objToRole || d.userRole, zone: d.objZone ?? { x: W / 2 - 150, y: H * 0.6, w: 300, h: H * 0.3 }, target: t };
     case "score":
       return { type: "score", label: "Score a goal", target: t };
     case "keepPossession":
@@ -134,7 +142,9 @@ function draftToStep(d: DraftScenario): LessonStep {
       body: d.liveBody,
       matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules },
       objective: draftToObjective(d),
-      scenarioSetup: d.forcedRestart ? { forcedRestart: d.forcedRestart } : undefined,
+      scenarioSetup: d.forcedRestart
+        ? { forcedRestart: d.forcedRestart, ...(d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}) }
+        : undefined,
     };
   }
   if (d.stepKind === "game") {
@@ -193,6 +203,9 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
         : "target" in st.objective ? (st.objective.target ?? 1) : 1;
       d.objToRole = st.objective.type === "passCount" ? (st.objective.toRole ?? "")
         : st.objective.type === "receiveInZone" ? st.objective.role : "";
+      d.objZone = st.objective.type === "receiveInZone" ? st.objective.zone : null;
+      d.restartPoint = (st.scenarioSetup?.restartX != null && st.scenarioSetup?.restartY != null)
+        ? { x: st.scenarioSetup.restartX, y: st.scenarioSetup.restartY } : null;
       drafts.push(d);
     } else if (st.kind === "play") {
       const d = blankScenario("game");
@@ -230,6 +243,9 @@ function AuthorEditor() {
   const [idx, setIdx] = useState(0);
   const [tool, setTool] = useState<AuthorTool>({ kind: "select" });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Interactive placing on the Scenario/Game field preview.
+  const [placeMode, setPlaceMode] = useState<"restart" | "zone" | null>(null);
+  useEffect(() => { setPlaceMode(null); }, [idx]); // clear when switching steps
   const [testLesson, setTestLesson] = useState<Lesson | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -470,7 +486,14 @@ function AuthorEditor() {
                 tool={tool} selectedId={selectedId} onSelect={setSelectedId}
               />
             ) : (
-              <FormationPreview format={cur.format} userRole={cur.userRole} zoneRules={cur.zoneRules} />
+              <FormationPreview
+                format={cur.format} userRole={cur.userRole} zoneRules={cur.zoneRules}
+                placeMode={placeMode}
+                restartPoint={cur.restartPoint}
+                objectiveZone={cur.objType === "receiveInZone" ? cur.objZone : null}
+                onPlaceRestart={(x, y) => { patch({ restartPoint: { x, y } }); setPlaceMode(null); toast("Restart point set"); }}
+                onDrawZone={(rect) => { patch({ objZone: rect }); setPlaceMode(null); toast("Objective zone set"); }}
+              />
             )}
           </div>
 
@@ -490,6 +513,15 @@ function AuthorEditor() {
                       <option value="">(normal)</option><option value="throwin">Throw-in</option><option value="goalkick">Goal kick</option><option value="corner">Corner</option><option value="kickoff">Kick-off</option>
                     </select>
                   </label>
+                  {cur.forcedRestart && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setPlaceMode(placeMode === "restart" ? null : "restart")}
+                        className={clsx("rounded-lg px-2.5 py-1 text-[11px] font-extrabold cursor-pointer border", placeMode === "restart" ? "bg-[#FFD166] border-[#FFD166]" : cur.restartPoint ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]" : "bg-white border-[rgba(20,60,35,.15)]")}>
+                        {placeMode === "restart" ? "Click the field…" : cur.restartPoint ? "✓ Restart point set" : "⚽ Set restart point"}
+                      </button>
+                      {cur.restartPoint && <button onClick={() => patch({ restartPoint: null })} className="text-[11px] font-bold text-[#E0463B] cursor-pointer">clear</button>}
+                    </div>
+                  )}
                 </div>
                 <div className={GROUP}>
                   <p className={GLABEL}>OBJECTIVE</p>
@@ -508,11 +540,21 @@ function AuthorEditor() {
                       <label className="text-[11px] font-bold text-[#5d6f63]">{cur.objType === "passCount" ? "Pass to" : "Receiver"}
                         <select value={cur.objToRole} onChange={(e) => patch({ objToRole: e.target.value })} className="ml-2 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white">
                           {cur.objType === "passCount" && <option value="">any teammate</option>}
-                          {["gk", "hold", "lw", "rw", "fwd", "lcm", "rcm"].map((r) => <option key={r} value={r}>#{r}</option>)}
+                          {OBJ_ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
                         </select>
                       </label>
                     )}
                   </div>
+                  {cur.objType === "receiveInZone" && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setPlaceMode(placeMode === "zone" ? null : "zone")}
+                        className={clsx("rounded-lg px-2.5 py-1 text-[11px] font-extrabold cursor-pointer border", placeMode === "zone" ? "bg-[#FFD166] border-[#FFD166]" : cur.objZone ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]" : "bg-white border-[rgba(20,60,35,.15)]")}>
+                        {placeMode === "zone" ? "Drag the field…" : cur.objZone ? "✓ Zone drawn" : "▭ Draw target zone"}
+                      </button>
+                      {cur.objZone && <button onClick={() => patch({ objZone: null })} className="text-[11px] font-bold text-[#E0463B] cursor-pointer">clear</button>}
+                      {!cur.objZone && <span className="text-[10px] text-[#9aa79f]">(uses a default box if not drawn)</span>}
+                    </div>
+                  )}
                 </div>
               </>
             )}
