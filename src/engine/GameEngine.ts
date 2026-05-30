@@ -1427,13 +1427,16 @@ export class GameEngine {
     const team = carrier.side === "us" ? this.teamUs : this.teamThem;
     const dir = this.attackDir(carrier.side);
 
-    // Build pass options (include GK as back-pass target)
+    // Build outfield pass options. The GK is deliberately EXCLUDED here — the
+    // keeper is only ever reachable via the gated back-pass block below, never
+    // as a "best option", so the carrier can't keep dumping it backwards.
     const opts: { p: Player; s: number; score: number }[] = [];
     for (const p of team) {
-      if (p === carrier) continue;
+      if (p === carrier || p.gk) continue;
       const av = this.availability(p, carrier);
       const forward = ((carrier.y - p.y) * dir) / H;
-      const sc = av * 0.6 + clamp(forward + 0.3, 0, 1) * 0.4;
+      // Reward forward options, penalize backward ones — bias the attack upfield.
+      const sc = av * 0.55 + clamp(forward + 0.3, 0, 1) * 0.45;
       opts.push({ p, s: av, score: sc });
     }
     opts.sort((a, b) => b.score - a.score);
@@ -1466,13 +1469,14 @@ export class GameEngine {
     const canGoInside = aheadClear(-110);    // space to the other flank
     const hasSpaceAhead = canGoForward || canGoOutside || canGoInside;
 
-    // Back pass to keeper ONLY as a last resort: genuinely under pressure
-    // (defender right on them), no space to advance or beat the marker, and no
-    // decent forward option. Otherwise the carrier backs off far too readily.
+    // Back pass to keeper ONLY when in their OWN THIRD and genuinely trapped:
+    // a defender right on them (within ~26px) with no lane ahead to advance or
+    // beat the marker. Anywhere past the own third, retreating to the GK is
+    // never allowed — they must attack or play a forward/square ball.
     const ownGoalY = carrier.side === "us" ? BOT : TOP;
-    const deepInOwnHalf = Math.abs(carrier.y - ownGoalY) < H * 0.32;
-    const trapped = pressure < 30 && !hasSpaceAhead && best.s < 0.3;
-    if (deepInOwnHalf && trapped) {
+    const inOwnThird = Math.abs(carrier.y - ownGoalY) < H / 3;
+    const trapped = pressure < 26 && !hasSpaceAhead;
+    if (inOwnThird && trapped) {
       const gk = carrier.side === "us" ? this.gkUs : this.gkThem;
       if (gk && this.nearestEnemy(gk.x, gk.y, carrier.side) > 50) {
         this.doPass(carrier, gk);
@@ -1480,9 +1484,11 @@ export class GameEngine {
       }
     }
 
-    // Given space ahead, keep attacking — don't pass (especially not backwards).
-    // The carrier-lane dribble will drive them forward / around the defender.
-    if (hasSpaceAhead && pressure > 28 && distToGoal < H * 0.85) return;
+    // Given any space ahead and not tightly pressed, KEEP ATTACKING — don't pass.
+    // The carrier-lane dribble drives them forward / around the defender. This is
+    // the main "be aggressive" lever: only a defender right on them (<24px) stops
+    // a carrier with open space from continuing.
+    if (hasSpaceAhead && pressure > 24 && distToGoal < H * 0.9) return;
 
     // Breakaway: no defender ahead at all → definitely keep running.
     let defenderAhead = false;
