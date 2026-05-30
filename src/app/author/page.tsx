@@ -269,7 +269,9 @@ function AuthorEditor() {
     const lesson = builtin ?? own;
     if (!lesson) return;
     loadedFor.current = editParam;
-    setScenarios(lessonToDrafts(lesson));
+    const loaded = lessonToDrafts(lesson);
+    setScenarios(loaded);
+    seedHistory(loaded);
     setIdx(0);
     setSelectedId(null);
     if (own) {
@@ -282,11 +284,76 @@ function AuthorEditor() {
   }, [editParam, customLessons]);
 
   const cur = scenarios[idx];
-  const patch = useCallback((p: Partial<DraftScenario>) => {
-    setScenarios((prev) => prev.map((s, i) => (i === idx ? { ...s, ...p } : s)));
-  }, [idx]);
+
+  // ---- Undo / redo history (snapshots of the whole `scenarios` array) ----
+  // Continuous edits (a rule drag) share a coalesceKey so the whole drag is ONE
+  // undo step; discrete edits (key null) each push their own step.
+  const [hist, setHist] = useState<{ stack: DraftScenario[][]; index: number }>({ stack: [[blankScenario()]], index: 0 });
+  const coalesceKey = useRef<string | null>(null);
+  // Keep history seeded once a lesson loads (replace the initial blank snapshot).
+  const seedHistory = useCallback((s: DraftScenario[]) => {
+    setHist({ stack: [s], index: 0 });
+    coalesceKey.current = null;
+  }, []);
+  const commit = useCallback((next: DraftScenario[], key: string | null = null) => {
+    setScenarios(next);
+    setHist((h) => {
+      if (key !== null && coalesceKey.current === key) {
+        const stack = h.stack.slice(0, h.index + 1);
+        stack[h.index] = next; // coalesce into the current step
+        return { stack, index: h.index };
+      }
+      const stack = h.stack.slice(0, h.index + 1);
+      stack.push(next);
+      return { stack, index: stack.length - 1 };
+    });
+    coalesceKey.current = key;
+  }, []);
+  const canUndo = hist.index > 0;
+  const canRedo = hist.index < hist.stack.length - 1;
+  const undo = useCallback(() => {
+    setHist((h) => {
+      if (h.index <= 0) return h;
+      const ni = h.index - 1;
+      setScenarios(h.stack[ni]);
+      coalesceKey.current = null;
+      setIdx((i) => Math.min(i, h.stack[ni].length - 1));
+      return { ...h, index: ni };
+    });
+  }, []);
+  const redo = useCallback(() => {
+    setHist((h) => {
+      if (h.index >= h.stack.length - 1) return h;
+      const ni = h.index + 1;
+      setScenarios(h.stack[ni]);
+      coalesceKey.current = null;
+      setIdx((i) => Math.min(i, h.stack[ni].length - 1));
+      return { ...h, index: ni };
+    });
+  }, []);
+
+  // Content edits flow through patch. `coalesce` (e.g. "rule-drag") merges a
+  // continuous gesture into a single undo step. Computes next from current
+  // `scenarios` then records once (no setState nested inside another updater).
+  const patch = useCallback((p: Partial<DraftScenario>, coalesce: string | null = null) => {
+    const next = scenarios.map((s, i) => (i === idx ? { ...s, ...p } : s));
+    commit(next, coalesce);
+  }, [scenarios, idx, commit]);
 
   const toast = (m: string) => { setFlash(m); setTimeout(() => setFlash(null), 1800); };
+
+  // Keyboard undo/redo (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   // ---- board object ops ----
   const addPlayer = (team: "home" | "away") => {
@@ -332,11 +399,13 @@ function AuthorEditor() {
     patch({ zoneRules: [...cur.zoneRules, rule] });
     setSelectedRuleId(rule.id);
   };
-  const updateRule = (id: string, p: Partial<ZoneRule>) => patch({ zoneRules: cur.zoneRules.map((r) => (r.id === id ? { ...r, ...p } : r)) });
+  // `coalesce` (set during a box drag) collapses the whole gesture into one undo step.
+  const updateRule = (id: string, p: Partial<ZoneRule>, coalesce: string | null = null) =>
+    patch({ zoneRules: cur.zoneRules.map((r) => (r.id === id ? { ...r, ...p } : r)) }, coalesce);
   const removeRule = (id: string) => { patch({ zoneRules: cur.zoneRules.filter((r) => r.id !== id) }); if (selectedRuleId === id) setSelectedRuleId(null); };
 
   // ---- scenario pager ----
-  const addScenario = (kind: StepKind = "instructional") => { setScenarios([...scenarios, blankScenario(kind)]); setIdx(scenarios.length); setSelectedId(null); };
+  const addScenario = (kind: StepKind = "instructional") => { const next = [...scenarios, blankScenario(kind)]; commit(next); setIdx(next.length - 1); setSelectedId(null); };
   const setStepKind = (kind: StepKind) => patch({ stepKind: kind });
   // Apply a saved zone-rule preset (built-in or custom) to this step's boundaries.
   const applyPreset = (presetId: string) => {
@@ -348,7 +417,7 @@ function AuthorEditor() {
   const delScenario = () => {
     if (scenarios.length <= 1) { toast("A lesson needs at least one scenario"); return; }
     const next = scenarios.filter((_, i) => i !== idx);
-    setScenarios(next); setIdx(Math.max(0, idx - 1)); setSelectedId(null);
+    commit(next); setIdx(Math.max(0, idx - 1)); setSelectedId(null);
   };
   // Duplicate the current step (same settings) right after it — handy for
   // building progressions. Board objects get fresh ids and zones/infoCards/
@@ -374,7 +443,7 @@ function AuthorEditor() {
       zoneRules: src.zoneRules.map((r) => ({ ...r })),
     };
     const next = [...scenarios.slice(0, idx + 1), dup, ...scenarios.slice(idx + 1)];
-    setScenarios(next); setIdx(idx + 1); setSelectedId(null);
+    commit(next); setIdx(idx + 1); setSelectedId(null);
     toast("Step copied");
   };
 
@@ -427,7 +496,7 @@ function AuthorEditor() {
           drafts = scns.map(scenarioToDraft);
         }
         if (d.title) setTitle(d.title);
-        setScenarios(drafts); setIdx(0); setSelectedId(null);
+        setScenarios(drafts); seedHistory(drafts); setIdx(0); setSelectedId(null);
         setEditingOwnId(null); // imported = a new lesson
         toast(`Imported ${drafts.length} steps`);
       } catch { toast("Could not read file"); }
@@ -552,6 +621,14 @@ function AuthorEditor() {
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Lesson title"
           className="w-full rounded-xl border-2 border-[rgba(20,60,35,.12)] px-3 py-2 font-[Fredoka] font-bold text-lg mb-3" />
 
+        {/* Undo / Redo (whole-lesson history) */}
+        <div className="flex items-center gap-1.5 mb-2">
+          <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"
+            className="rounded-md px-2.5 py-1 text-[11px] font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer hover:bg-[#f3f7f2] disabled:opacity-35 disabled:cursor-default">↶ Undo</button>
+          <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"
+            className="rounded-md px-2.5 py-1 text-[11px] font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer hover:bg-[#f3f7f2] disabled:opacity-35 disabled:cursor-default">↷ Redo</button>
+        </div>
+
         {/* Step pager — each pill is colored by its kind */}
         <div className="flex items-center gap-1.5 flex-wrap mb-4">
           <span className="text-[11px] font-extrabold text-[#5d6f63] mr-1">Steps:</span>
@@ -609,7 +686,7 @@ function AuthorEditor() {
                 onPlaceRestart={(x, y) => { patch({ restartPoint: { x, y } }); setPlaceMode(null); toast("Restart point set"); }}
                 onDrawZone={(rect) => { patch({ objZone: rect }); setPlaceMode(null); toast("Objective zone set"); }}
                 onDrawRule={(id, b) => { updateRule(id, b); setPlaceMode(null); toast("Rule box drawn"); }}
-                onUpdateRule={(id, b) => updateRule(id, b)}
+                onUpdateRule={(id, b) => updateRule(id, b, `rule-drag:${id}`)}
                 onSelectRule={(id) => setSelectedRuleId(id)}
                 onDeleteRule={(id) => removeRule(id)}
               />
