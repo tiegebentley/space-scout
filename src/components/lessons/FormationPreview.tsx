@@ -35,11 +35,16 @@ interface Props {
   selectedRuleId?: string | null;
   onPlaceRestart?: (x: number, y: number) => void;
   onDrawZone?: (rect: EngineRect) => void;
-  // Draw a zone-rule box; bounds are fractional 0..1 (xMin/xMax/yMin/yMax).
-  onDrawRule?: (id: string, bounds: { xMin: number; xMax: number; yMin: number; yMax: number }) => void;
+  // Draw / move / resize a zone-rule box; bounds are fractional 0..1.
+  onDrawRule?: (id: string, bounds: RuleBounds) => void;
+  onUpdateRule?: (id: string, bounds: RuleBounds) => void;
+  onSelectRule?: (id: string) => void;
+  onDeleteRule?: (id: string) => void;
 }
 
-export function FormationPreview({ format, userRole, zoneRules, placeMode, restartPoint, objectiveZone, selectedRuleId, onPlaceRestart, onDrawZone, onDrawRule }: Props) {
+type RuleBounds = { xMin: number; xMax: number; yMin: number; yMax: number };
+
+export function FormationPreview({ format, userRole, zoneRules, placeMode, restartPoint, objectiveZone, selectedRuleId, onPlaceRestart, onDrawZone, onDrawRule, onUpdateRule, onSelectRule, onDeleteRule }: Props) {
   const formation = FORMATIONS[format] || FORMATIONS["5v5"];
   const roles = Object.keys(formation);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -63,6 +68,60 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
     const sy = ((cy - rb.top) / rb.height) * VIEW_H;
     const { x, y } = screenToLab(sx, sy);
     return { x: Math.round(x), y: Math.round(y) };
+  };
+
+  // Screen pointer → fractional pitch coords (0..1) for zone rules.
+  const toFraction = (cx: number, cy: number) => {
+    const e = toEngine(cx, cy);
+    return { fx: (e.x - L) / (R - L), fy: (e.y - TOP) / (BOT - TOP) };
+  };
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+  // Drag a rule box (move whole box, or resize via its corner). Works in
+  // fractional space so it round-trips cleanly to the ZoneRule bounds.
+  const onRuleDown = (rule: ZoneRule, handle: "move" | "se") => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    onSelectRule?.(rule.id);
+    if (!onUpdateRule) return;
+    const orig: RuleBounds = { xMin: rule.xMin, xMax: rule.xMax, yMin: rule.yMin, yMax: rule.yMax };
+    const w = orig.xMax - orig.xMin, h = orig.yMax - orig.yMin;
+    if (handle === "move") {
+      const start = toFraction(e.clientX, e.clientY);
+      const move = (ev: PointerEvent) => {
+        const p = toFraction(ev.clientX, ev.clientY);
+        const nx = clamp01(Math.min(orig.xMin + (p.fx - start.fx), 1 - w));
+        const ny = clamp01(Math.min(orig.yMin + (p.fy - start.fy), 1 - h));
+        onUpdateRule(rule.id, { xMin: nx, yMin: ny, xMax: nx + w, yMax: ny + h });
+      };
+      const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+      return;
+    }
+    // Resize: pin the SCREEN corner diagonally opposite the handle, and let the
+    // pointer drive the dragged corner — robust to the board's rotation. Both
+    // screen corners are converted back to fractions and normalized.
+    const c1 = labToScreen(L + (R - L) * orig.xMin, TOP + (BOT - TOP) * orig.yMin);
+    const c2 = labToScreen(L + (R - L) * orig.xMax, TOP + (BOT - TOP) * orig.yMax);
+    const anchorScreen = { sx: Math.min(c1.sx, c2.sx), sy: Math.min(c1.sy, c2.sy) }; // screen NW (fixed)
+    const move = (ev: PointerEvent) => {
+      const a = toFraction(anchorScreenToClient(anchorScreen).x, anchorScreenToClient(anchorScreen).y);
+      const p = toFraction(ev.clientX, ev.clientY);
+      const b: RuleBounds = {
+        xMin: clamp01(Math.min(a.fx, p.fx)), xMax: clamp01(Math.max(a.fx, p.fx)),
+        yMin: clamp01(Math.min(a.fy, p.fy)), yMax: clamp01(Math.max(a.fy, p.fy)),
+      };
+      if (b.xMax - b.xMin < 0.05) b.xMax = b.xMin + 0.05;
+      if (b.yMax - b.yMin < 0.05) b.yMax = b.yMin + 0.05;
+      onUpdateRule(rule.id, b);
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+
+  // SVG-screen coords → client (px) so we can feed them back through toFraction.
+  const anchorScreenToClient = (s: { sx: number; sy: number }) => {
+    const svg = svgRef.current!; const rb = svg.getBoundingClientRect();
+    return { x: rb.left + (s.sx / VIEW_W) * rb.width, y: rb.top + (s.sy / VIEW_H) * rb.height };
   };
 
   const ruleId = typeof placeMode === "string" && placeMode.startsWith("rule:") ? placeMode.slice(5) : null;
@@ -120,15 +179,33 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
       <rect x={VIEW_W / 2 - 130} y={VIEW_H - 116} width={260} height={110} fill="none" stroke="rgba(255,255,255,.55)" strokeWidth={3} />
       <BoardGoals />
 
-      {/* Boundaries / rules (both teams) — selected one is highlighted */}
+      {/* Boundaries / rules (both teams) — drag to move, corner to resize, × to
+          delete. The selected rule shows its handles. Interactive only when the
+          edit callbacks are provided (i.e. in the author). */}
       {(zoneRules || []).map((z) => {
         const c1 = labToScreen(L + (R - L) * z.xMin, TOP + (BOT - TOP) * z.yMin);
         const c2 = labToScreen(L + (R - L) * z.xMax, TOP + (BOT - TOP) * z.yMax);
+        const x = Math.min(c1.sx, c2.sx), y = Math.min(c1.sy, c2.sy);
+        const w = Math.abs(c2.sx - c1.sx), h = Math.abs(c2.sy - c1.sy);
         const blue = z.team === "us";
         const sel = z.id === selectedRuleId;
-        return <rect key={z.id} x={Math.min(c1.sx, c2.sx)} y={Math.min(c1.sy, c2.sy)} width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)}
-          fill={blue ? "rgba(46,111,224,.12)" : "rgba(224,70,59,.12)"} stroke={blue ? "rgba(46,111,224,.8)" : "rgba(224,70,59,.8)"}
-          strokeWidth={sel ? 4 : 2} strokeDasharray="8 6" rx={8} />;
+        const interactive = !!onUpdateRule;
+        return (
+          <g key={z.id}>
+            <rect x={x} y={y} width={w} height={h}
+              fill={blue ? "rgba(46,111,224,.12)" : "rgba(224,70,59,.12)"} stroke={blue ? "rgba(46,111,224,.8)" : "rgba(224,70,59,.8)"}
+              strokeWidth={sel ? 4 : 2} strokeDasharray="8 6" rx={8}
+              style={interactive ? { cursor: "move" } : undefined}
+              onPointerDown={interactive ? onRuleDown(z, "move") : undefined} />
+            {interactive && sel && <>
+              <circle cx={x + w} cy={y + h} r={10} fill="#FFD166" stroke="#16241c" strokeWidth={2} style={{ cursor: "nwse-resize" }} onPointerDown={onRuleDown(z, "se")} />
+              <g style={{ cursor: "pointer" }} onPointerDown={(e) => { e.stopPropagation(); onDeleteRule?.(z.id); }}>
+                <circle cx={x + w} cy={y} r={10} fill="#E0463B" stroke="#fff" strokeWidth={2} />
+                <text x={x + w} y={y + 4} textAnchor="middle" fontSize={13} fontWeight={900} fill="#fff" style={{ pointerEvents: "none" }}>×</text>
+              </g>
+            </>}
+          </g>
+        );
       })}
 
       {/* Objective zone (receive-in-zone) */}

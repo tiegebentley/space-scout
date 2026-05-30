@@ -609,6 +609,9 @@ function AuthorEditor() {
                 onPlaceRestart={(x, y) => { patch({ restartPoint: { x, y } }); setPlaceMode(null); toast("Restart point set"); }}
                 onDrawZone={(rect) => { patch({ objZone: rect }); setPlaceMode(null); toast("Objective zone set"); }}
                 onDrawRule={(id, b) => { updateRule(id, b); setPlaceMode(null); toast("Rule box drawn"); }}
+                onUpdateRule={(id, b) => updateRule(id, b)}
+                onSelectRule={(id) => setSelectedRuleId(id)}
+                onDeleteRule={(id) => removeRule(id)}
               />
             )}
           </div>
