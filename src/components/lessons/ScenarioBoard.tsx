@@ -307,11 +307,24 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
           return <rect x={Math.min(c1.sx, c2.sx)} y={Math.min(c1.sy, c2.sy)} width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)} fill="rgba(255,209,102,.18)" stroke="#FFD166" strokeWidth={3} rx={10} />;
         })()}
 
-        {/* Optimal markers on reveal (move mode) */}
-        {reveal && mode === "move" && scenario.optimals &&
-          Object.entries(scenario.optimals).map(([id, p]) => {
-            const s = labToScreen(p.x, p.y);
-            return <circle key={`opt-${id}`} cx={s.sx} cy={s.sy} r={R + 6} fill="none" stroke="#FFD166" strokeWidth={4} strokeDasharray="6 6" />;
+        {/* On reveal (move mode): highlight the correct-answer ZONE(S) for each
+            answer player — i.e. the area they should move INTO. (We deliberately
+            don't mark scenario.optimals, which can be the player's start spot for
+            authored scenarios — that's the stray circle this replaces.) */}
+        {reveal && mode === "move" && scenario.zones &&
+          draggableIds.flatMap((id) => {
+            const z = scenario.zones?.[id];
+            if (!z) return [];
+            const arr = Array.isArray(z) ? z : [z];
+            return arr.map((zz, zi) => {
+              const c1 = labToScreen(zz.x, zz.y);
+              const c2 = labToScreen(zz.x + zz.w, zz.y + zz.h);
+              return (
+                <rect key={`ans-${id}-${zi}`} x={Math.min(c1.sx, c2.sx)} y={Math.min(c1.sy, c2.sy)}
+                  width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)}
+                  fill="rgba(255,209,102,.20)" stroke="#FFD166" strokeWidth={3} strokeDasharray="10 8" rx={10} pointerEvents="none" />
+              );
+            });
           })}
 
         {/* Optimal arrow on reveal */}
