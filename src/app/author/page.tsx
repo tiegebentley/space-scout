@@ -294,6 +294,33 @@ function AuthorEditor() {
     const next = scenarios.filter((_, i) => i !== idx);
     setScenarios(next); setIdx(Math.max(0, idx - 1)); setSelectedId(null);
   };
+  // Duplicate the current step (same settings) right after it — handy for
+  // building progressions. Board objects get fresh ids and zones/infoCards/
+  // answerIds/arrowId are re-keyed to match, so the copy is fully independent.
+  const copyScenario = () => {
+    const src = scenarios[idx];
+    const idMap: Record<string, string> = {};
+    const objects = src.objects.map((o) => {
+      const nidNew = nid(o.type);
+      idMap[o.id] = nidNew;
+      return { ...o, id: nidNew };
+    });
+    const remap = (id: string) => idMap[id] ?? id;
+    const dup: DraftScenario = {
+      ...src,
+      id: nid("sc"),
+      objects,
+      answerIds: src.answerIds.map(remap),
+      arrowId: src.arrowId ? remap(src.arrowId) : null,
+      zones: Object.fromEntries(Object.entries(src.zones).map(([k, v]) => [remap(k), { ...v }])),
+      infoCards: Object.fromEntries(Object.entries(src.infoCards).map(([k, v]) => [remap(k), { ...v }])),
+      choices: src.choices.map((c) => ({ ...c })),
+      zoneRules: src.zoneRules.map((r) => ({ ...r })),
+    };
+    const next = [...scenarios.slice(0, idx + 1), dup, ...scenarios.slice(idx + 1)];
+    setScenarios(next); setIdx(idx + 1); setSelectedId(null);
+    toast("Step copied");
+  };
 
   // ---- save / export / import ----
   // forSave keeps the existing id when updating an own lesson in place; test-play
@@ -679,13 +706,16 @@ function AuthorEditor() {
 
             {/* Actions */}
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={onTest} className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer">▶ Test</button>
+              {/* Row 1: Add Step | Copy Step */}
               <button onClick={() => addScenario(cur.stepKind)} className="rounded-xl bg-white border-2 border-[#2B8A4E] text-[#2B8A4E] font-extrabold text-sm py-2.5 cursor-pointer">＋ Add Step</button>
+              <button onClick={copyScenario} className="rounded-xl bg-white border-2 border-[#2E6FE0] text-[#2E6FE0] font-extrabold text-sm py-2.5 cursor-pointer">⧉ Copy Step</button>
+              {/* Row 2: Test | Delete this step */}
+              <button onClick={onTest} className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer">▶ Test</button>
               <button
                 onClick={() => { if (scenarios.length > 1 && confirm(`Delete step ${idx + 1}?`)) delScenario(); else if (scenarios.length <= 1) toast("A lesson needs at least one step"); }}
                 disabled={scenarios.length <= 1}
-                className="rounded-xl bg-white border-2 border-[#E0463B] text-[#E0463B] font-extrabold text-sm py-2.5 cursor-pointer disabled:opacity-35 disabled:cursor-default col-span-2"
-              >🗑 Delete this step</button>
+                className="rounded-xl bg-white border-2 border-[#E0463B] text-[#E0463B] font-extrabold text-sm py-2.5 cursor-pointer disabled:opacity-35 disabled:cursor-default"
+              >🗑 Delete Step</button>
               <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer col-span-2">💾 {editingOwnId ? "Update" : "Save"} lesson</button>
               <button onClick={onExport} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Export JSON</button>
               <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Import JSON</button>
