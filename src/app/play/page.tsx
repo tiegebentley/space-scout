@@ -223,12 +223,13 @@ export default function PlayPage() {
     savedFlashRef.current = setTimeout(() => setJustSaved(false), 1800);
   }, []);
 
-  // The saved custom preset the current zones came from, if any — tracked via
-  // sourcePresetId so it survives edits (selectedPresetId flips to "custom" on
-  // every change). Built-ins / free-draw → undefined → save as a NEW preset.
+  // The saved custom preset the current zones came from, if any. Matched by
+  // sourcePresetId (survives edits — selectedPresetId flips to "custom" on every
+  // change) OR by selectedPresetId itself when a custom preset is freshly picked
+  // from the dropdown. Built-ins / free-draw → undefined → save as a NEW preset.
   const editingCustomPreset = useMemo(
-    () => customPresets.find((p) => p.id === sourcePresetId),
-    [customPresets, sourcePresetId]
+    () => customPresets.find((p) => p.id === sourcePresetId || p.id === selectedPresetId),
+    [customPresets, sourcePresetId, selectedPresetId]
   );
 
   // Save a brand-new named preset from the current zones.
