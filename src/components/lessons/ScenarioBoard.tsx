@@ -253,15 +253,26 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
     );
   };
 
+  // Whether there's anything to show in the side panel yet (so we can keep it
+  // out of the way until it has content on narrow screens).
+  const panelHasContent =
+    (mode === "info" && viewed.size > 0) ||
+    (mode === "choice") ||
+    !!verdict || reveal;
+
   return (
-    <div className="w-full">
-      {/* Attack-direction hint (your team attacks UP) */}
-      <p className="text-center text-[10px] font-extrabold tracking-wide text-[#5d6f63] mb-1">▲ YOU ATTACK THIS WAY ▲</p>
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        className="w-full max-w-[420px] mx-auto block rounded-2xl border-2 border-[rgba(20,60,35,.15)] touch-none select-none shadow-sm"
-      >
+    // Two columns on wider screens: side panel (answers/feedback) on the LEFT,
+    // the field on the RIGHT. Stacks vertically on narrow screens.
+    <div className="w-full flex flex-col md:flex-row-reverse md:items-start gap-4">
+      {/* FIELD — larger and prominent. Capped by both width and viewport height
+          so the tall portrait pitch stays fully visible without scrolling. */}
+      <div className="md:w-[440px] md:shrink-0 mx-auto">
+        <p className="text-center text-[11px] font-extrabold tracking-wide text-[#5d6f63] mb-1">▲ YOU ATTACK THIS WAY ▲</p>
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          className="w-full max-w-[440px] max-h-[68vh] mx-auto block rounded-2xl border-2 border-[rgba(20,60,35,.15)] touch-none select-none shadow-sm"
+        >
         {/* Striped grass (horizontal bands up the pitch) */}
         {Array.from({ length: 10 }).map((_, i) => (
           <rect key={i} x={0} y={(VIEW_H / 10) * i} width={VIEW_W} height={VIEW_H / 10} fill={i % 2 ? "#2F9354" : "#2B8A4E"} />
@@ -343,11 +354,15 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
             </g>
           );
         })}
-      </svg>
+        </svg>
+      </div>
+
+      {/* SIDE PANEL — answers + feedback, to the left of the field on wide screens */}
+      <div className={clsx("flex-1 min-w-0 space-y-2", !panelHasContent && "md:min-h-[1px]")}>
 
       {/* Info cards revealed by tapping (info mode) */}
       {mode === "info" && (
-        <div className="mt-3 grid gap-2">
+        <div className="grid gap-2">
           {[...viewed].map((id) => {
             const card = scenario.infoCards?.[id];
             const player = scenario.board.objects.find((o) => o.id === id);
@@ -366,7 +381,7 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
 
       {/* Choice buttons */}
       {mode === "choice" && scenario.choices && (
-        <div className="mt-3 grid gap-2">
+        <div className="grid gap-2">
           {scenario.choices.map((c, i) => (
             <button
               key={i}
@@ -391,29 +406,28 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
       {(mode === "move" || mode === "arrow") && !reveal && (
         <button
           onClick={onCheck}
-          className="mt-3 w-full rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer hover:bg-[#2961c9]"
+          className="w-full rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer hover:bg-[#2961c9]"
         >
           Check my answer
         </button>
       )}
 
       {/* Verdict + explanation */}
-      <div className="mt-3 space-y-2">
-        {verdict && (
-          <p className={clsx(
-            "rounded-xl px-3 py-2 text-sm font-bold border",
-            verdict.kind === "ok"
-              ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]"
-              : "bg-[#fff3e0] border-[#f0b657] text-[#8a5a00]"
-          )}>
-            {verdict.kind === "ok" ? "✓ " : "✗ "}{verdict.text}
-          </p>
-        )}
-        {reveal && (
-          <p className="rounded-xl bg-[#f3f7f2] border border-[rgba(20,60,35,.1)] px-3 py-2 text-[13px] leading-relaxed font-semibold text-[#33433a]">
-            {scenario.explanation}
-          </p>
-        )}
+      {verdict && (
+        <p className={clsx(
+          "rounded-xl px-3 py-2 text-sm font-bold border",
+          verdict.kind === "ok"
+            ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]"
+            : "bg-[#fff3e0] border-[#f0b657] text-[#8a5a00]"
+        )}>
+          {verdict.kind === "ok" ? "✓ " : "✗ "}{verdict.text}
+        </p>
+      )}
+      {reveal && (
+        <p className="rounded-xl bg-[#f3f7f2] border border-[rgba(20,60,35,.1)] px-3 py-2 text-[13px] leading-relaxed font-semibold text-[#33433a]">
+          {scenario.explanation}
+        </p>
+      )}
       </div>
     </div>
   );
