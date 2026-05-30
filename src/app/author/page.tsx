@@ -5,12 +5,14 @@
 // arrow (arrow), or pick info players (info), write the question/explanation,
 // page through multiple scenarios, test-play, and save/export/import. Custom
 // lessons persist in the store and appear under "Your Lessons" on /learn.
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { AuthorBoard, type AuthorTool } from "@/components/lessons/AuthorBoard";
 import { LessonPlayer } from "@/components/lessons/LessonPlayer";
 import { useGameStore } from "@/stores/gameStore";
+import { getLesson } from "@/data/lessons";
 import type { BoardObject, Scenario, Zone, Lesson, Choice, InfoCard } from "@/types/lessons";
 
 type Mode = "move" | "choice" | "arrow" | "info";
@@ -71,8 +73,47 @@ function toScenario(d: DraftScenario): Scenario {
   };
 }
 
+// Convert a stored Scenario back into an editable draft (reverse of toScenario).
+// Used by both Import JSON and Edit-an-existing-lesson.
+function scenarioToDraft(s: Scenario): DraftScenario {
+  return {
+    id: s.id || nid("sc"),
+    question: s.question || "", instruction: s.instruction || "",
+    optimalNote: s.optimalNote || "", explanation: s.explanation || "",
+    mode: s.answer.mode,
+    objects: s.board.objects.map((o) => ({ ...o })),
+    answerIds: s.answer.mode === "move" || s.answer.mode === "info" ? s.answer.objectIds : [],
+    arrowId: s.answer.mode === "arrow" ? s.answer.objectId : null,
+    zones: (s.zones
+      ? Object.fromEntries(Object.entries(s.zones).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]))
+      : {}) as Record<string, Zone>,
+    choices: s.choices ?? [{ text: "", correct: true }, { text: "", correct: false }],
+    infoCards: s.infoCards ?? {},
+  };
+}
+
+// Pull the scenario steps out of a lesson into editable drafts.
+function lessonToDrafts(lesson: Lesson): DraftScenario[] {
+  const drafts = lesson.steps
+    .filter((st): st is Extract<Lesson["steps"][number], { kind: "scenario" }> => st.kind === "scenario")
+    .map((st) => scenarioToDraft(st.scenario));
+  return drafts.length ? drafts : [blankScenario()];
+}
+
+// useSearchParams (for ?edit=) requires a Suspense boundary in Next 16.
 export default function AuthorPage() {
+  return (
+    <Suspense fallback={<main className="flex-1 p-4" />}>
+      <AuthorEditor />
+    </Suspense>
+  );
+}
+
+function AuthorEditor() {
   const saveCustomLesson = useGameStore((s) => s.saveCustomLesson);
+  const customLessons = useGameStore((s) => s.customLessons) ?? [];
+  const searchParams = useSearchParams();
+  const editParam = searchParams.get("edit");
 
   const [title, setTitle] = useState("My Lesson");
   const [scenarios, setScenarios] = useState<DraftScenario[]>([blankScenario()]);
@@ -82,6 +123,30 @@ export default function AuthorPage() {
   const [testLesson, setTestLesson] = useState<Lesson | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // When editing: the id of the OWN lesson we update in place. Editing a built-in
+  // leaves this null so Save forks a new custom copy (originals stay intact).
+  const [editingOwnId, setEditingOwnId] = useState<string | null>(null);
+  const loadedFor = useRef<string | null>(null);
+
+  // Load a lesson into the editor when arriving via /author?edit=<id>.
+  useEffect(() => {
+    if (!editParam || loadedFor.current === editParam) return;
+    const builtin = getLesson(editParam);
+    const own = customLessons.find((l) => l.id === editParam);
+    const lesson = builtin ?? own;
+    if (!lesson) return;
+    loadedFor.current = editParam;
+    setScenarios(lessonToDrafts(lesson));
+    setIdx(0);
+    setSelectedId(null);
+    if (own) {
+      setTitle(own.title);
+      setEditingOwnId(own.id); // update in place
+    } else {
+      setTitle(`${lesson.title} (edited)`); // forking a built-in
+      setEditingOwnId(null);
+    }
+  }, [editParam, customLessons]);
 
   const cur = scenarios[idx];
   const patch = useCallback((p: Partial<DraftScenario>) => {
@@ -129,8 +194,10 @@ export default function AuthorPage() {
   };
 
   // ---- save / export / import ----
-  const buildLesson = useCallback((): Lesson => ({
-    id: nid("custom"),
+  // forSave keeps the existing id when updating an own lesson in place; test-play
+  // and fresh saves get a new id.
+  const buildLesson = useCallback((forSave = false): Lesson => ({
+    id: forSave && editingOwnId ? editingOwnId : nid("custom"),
     title: title.trim() || "My Lesson",
     description: "Custom lesson",
     difficulty: "beginner",
@@ -139,12 +206,13 @@ export default function AuthorPage() {
       ...scenarios.map((d) => ({ kind: "scenario" as const, scenario: toScenario(d) })),
       { kind: "play" as const, title: "Now try it live!", body: "Put it into practice in a real game.", matchConfig: { format: "5v5" as const, userRole: "rw" } },
     ],
-  }), [title, scenarios]);
+  }), [title, scenarios, editingOwnId]);
 
   const onSave = () => {
-    const lesson = buildLesson();
+    const lesson = buildLesson(true);
     saveCustomLesson(lesson);
-    toast(`Saved "${lesson.title}" — find it on the Learn page`);
+    setEditingOwnId(lesson.id); // subsequent saves now update this lesson in place
+    toast(editingOwnId ? `Updated "${lesson.title}"` : `Saved "${lesson.title}" — find it on the Learn page`);
   };
   const onTest = () => setTestLesson(buildLesson());
   const onExport = () => {
@@ -165,23 +233,10 @@ export default function AuthorPage() {
         const d = JSON.parse(String(rd.result));
         const scns: Scenario[] = d.scenarios || [];
         if (!scns.length) { toast("No scenarios found"); return; }
-        // Convert imported Scenarios back to drafts (best-effort).
-        const drafts: DraftScenario[] = scns.map((s) => ({
-          id: s.id || nid("sc"),
-          question: s.question || "", instruction: s.instruction || "",
-          optimalNote: s.optimalNote || "", explanation: s.explanation || "",
-          mode: s.answer.mode,
-          objects: s.board.objects.map((o) => ({ ...o })),
-          answerIds: s.answer.mode === "move" || s.answer.mode === "info" ? s.answer.objectIds : [],
-          arrowId: s.answer.mode === "arrow" ? s.answer.objectId : null,
-          zones: (s.zones
-            ? Object.fromEntries(Object.entries(s.zones).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]))
-            : {}) as Record<string, Zone>,
-          choices: s.choices ?? [{ text: "", correct: true }, { text: "", correct: false }],
-          infoCards: s.infoCards ?? {},
-        }));
+        const drafts = scns.map(scenarioToDraft);
         if (d.title) setTitle(d.title);
         setScenarios(drafts); setIdx(0); setSelectedId(null);
+        setEditingOwnId(null); // imported = a new lesson
         toast(`Imported ${drafts.length} scenarios`);
       } catch { toast("Could not read file"); }
     };
@@ -209,7 +264,7 @@ export default function AuthorPage() {
       <div className="w-full max-w-xl">
         <div className="flex items-center justify-between mb-3">
           <Link href="/learn" className="text-xs font-extrabold text-[#5d6f63] hover:underline">← Lessons</Link>
-          <span className="text-xs font-extrabold tracking-wide text-[#5d6f63]">AUTHOR</span>
+          <span className="text-xs font-extrabold tracking-wide text-[#5d6f63]">{editParam ? "EDITING" : "AUTHOR"}</span>
         </div>
 
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Lesson title"

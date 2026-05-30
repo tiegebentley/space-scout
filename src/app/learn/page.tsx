@@ -1,27 +1,26 @@
 "use client";
-// Course + lesson browser. Lists courses (lab COURSES port) and their lessons.
-// A lesson is openable when it's built (exists in the LESSONS registry); others
-// show "coming soon". Completed lessons get a check, pulled from the store.
+// Learn home — a GRID of course cards (lab style). Click a course to open its
+// lesson list at /learn/course/<id>. Authored lessons get their own "Your
+// Lessons" section with Edit/Delete. Course cards show completion progress.
 import Link from "next/link";
 import { clsx } from "clsx";
-import { COURSES, LESSONS, getLesson } from "@/data/lessons";
+import { COURSES, LESSONS } from "@/data/lessons";
 import { useGameStore } from "@/stores/gameStore";
 
-const LEVEL_STYLES: Record<string, string> = {
-  beginner: "text-[#2B8A4E]",
-  intermediate: "text-[#B07E00]",
-  advanced: "text-[#E0463B]",
+const LEVEL_BADGE: Record<string, string> = {
+  beginner: "bg-[#2B8A4E] text-white",
+  intermediate: "bg-[#F0B429] text-[#3a2e00]",
+  advanced: "bg-[#E0463B] text-white",
 };
 
 export default function LearnPage() {
-  // Select the stable array reference (not a fresh `?? []`, which would change
-  // the snapshot every render and trigger a Zustand update loop).
   const completed = useGameStore((s) => s.progress.completedLessons) ?? [];
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
+  const deleteCustomLesson = useGameStore((s) => s.deleteCustomLesson);
 
   return (
     <main className="flex-1 flex flex-col items-center p-4">
-      <div className="w-full max-w-xl">
+      <div className="w-full max-w-2xl">
         <div className="flex items-center justify-between mb-4">
           <Link href="/" className="text-xs font-extrabold text-[#5d6f63] hover:underline">← Home</Link>
         </div>
@@ -29,89 +28,60 @@ export default function LearnPage() {
           <h1 className="font-[Fredoka] font-bold text-3xl text-[#16241c]">Learn</h1>
           <Link href="/author" className="rounded-xl bg-[#2E6FE0] text-white text-xs font-extrabold px-3 py-2">+ Create lesson</Link>
         </div>
-        <p className="text-sm font-bold text-[#5d6f63] mb-6">
-          Work through a lesson, then put it into practice in a live game.
-        </p>
+        <p className="text-sm font-bold text-[#5d6f63] mb-6">Pick a course, then put each lesson into practice in a live game.</p>
+
+        {/* Course cards grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+          {COURSES.map((course) => {
+            const builtIds = course.lessonIds.filter((id) => id in LESSONS);
+            const doneCount = builtIds.filter((id) => completed.includes(id)).length;
+            const total = course.lessonIds.length;
+            const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+            return (
+              <Link key={course.id} href={`/learn/course/${course.id}`} className="block">
+                <div className="h-full flex flex-col gap-2 rounded-2xl bg-white border-2 border-[rgba(20,60,35,.1)] shadow-sm p-4 hover:border-[#2E6FE0] hover:-translate-y-0.5 transition-all cursor-pointer">
+                  <span className="text-3xl leading-none">{course.icon}</span>
+                  <h2 className="font-[Fredoka] font-semibold text-base text-[#16241c] leading-tight">{course.title}</h2>
+                  <span className={clsx("self-start text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded", LEVEL_BADGE[course.level])}>
+                    {course.level}
+                  </span>
+                  <div className="mt-auto pt-1">
+                    <div className="w-full bg-[#e8f0e6] rounded-full h-1.5 overflow-hidden">
+                      <div className="h-full bg-[#2B8A4E] rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="text-[10px] font-bold text-[#5d6f63] mt-1">{doneCount}/{total} done</p>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
 
         {/* Your custom lessons */}
         {customLessons.length > 0 && (
-          <div className="mb-6">
+          <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">✏️</span>
               <h2 className="font-[Fredoka] font-semibold text-xl text-[#16241c]">Your Lessons</h2>
             </div>
             <div className="flex flex-col gap-2">
               {customLessons.map((l) => (
-                <Link key={l.id} href={`/learn/${l.id}`} className="block">
-                  <div className="flex items-center justify-between rounded-xl bg-white border border-[rgba(20,60,35,.1)] shadow-sm px-4 py-3 active:translate-y-[1px] transition-transform cursor-pointer">
-                    <div>
-                      <p className="text-sm font-bold text-[#16241c]">{l.title}</p>
-                      <p className="text-[11px] font-semibold text-[#5d6f63]">{l.steps.filter((s) => s.kind === "scenario").length} scenarios</p>
-                    </div>
-                    {completed.includes(l.id)
-                      ? <span className="shrink-0 ml-3 inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#2B8A4E] text-white text-sm font-bold">✓</span>
-                      : <span className="shrink-0 ml-3 text-[#2E6FE0] font-extrabold">›</span>}
-                  </div>
-                </Link>
+                <div key={l.id} className="flex items-center gap-2 rounded-xl bg-white border border-[rgba(20,60,35,.1)] shadow-sm px-4 py-3">
+                  <Link href={`/learn/${l.id}`} className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#16241c] truncate">{l.title}</p>
+                    <p className="text-[11px] font-semibold text-[#5d6f63]">{l.steps.filter((s) => s.kind === "scenario").length} scenarios{completed.includes(l.id) ? " · ✓ done" : ""}</p>
+                  </Link>
+                  <Link href={`/author?edit=${l.id}`} className="shrink-0 rounded-lg bg-[#2E6FE0] text-white text-[11px] font-extrabold px-2.5 py-1.5">Edit</Link>
+                  <button
+                    onClick={() => { if (confirm(`Delete "${l.title}"?`)) deleteCustomLesson(l.id); }}
+                    className="shrink-0 rounded-lg bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] text-[11px] font-extrabold px-2.5 py-1.5 cursor-pointer"
+                  >Delete</button>
+                </div>
               ))}
             </div>
           </div>
         )}
-
-        <div className="flex flex-col gap-6">
-          {COURSES.map((course) => (
-            <div key={course.id}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xl">{course.icon}</span>
-                <h2 className="font-[Fredoka] font-semibold text-xl text-[#16241c]">{course.title}</h2>
-                <span className={clsx("text-[10px] font-extrabold uppercase tracking-wide", LEVEL_STYLES[course.level])}>
-                  {course.level}
-                </span>
-              </div>
-              <p className="text-xs font-semibold text-[#5d6f63] mb-3">{course.description}</p>
-
-              <div className="flex flex-col gap-2">
-                {course.lessonIds.map((id) => {
-                  const lesson = getLesson(id);
-                  const built = !!lesson && id in LESSONS;
-                  const done = completed.includes(id);
-                  const title = lesson?.title ?? prettifyId(id);
-
-                  if (!built) {
-                    return (
-                      <div key={id} className="flex items-center justify-between rounded-xl bg-[#f3f5f3] border border-[rgba(20,60,35,.08)] px-4 py-3 opacity-60">
-                        <span className="text-sm font-bold text-[#5d6f63]">{title}</span>
-                        <span className="text-[10px] font-extrabold uppercase tracking-wide text-[#9aa79f]">Coming soon</span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <Link key={id} href={`/learn/${id}`} className="block">
-                      <div className="flex items-center justify-between rounded-xl bg-white border border-[rgba(20,60,35,.1)] shadow-sm px-4 py-3 active:translate-y-[1px] transition-transform cursor-pointer">
-                        <div>
-                          <p className="text-sm font-bold text-[#16241c]">{title}</p>
-                          {lesson?.description && (
-                            <p className="text-[11px] font-semibold text-[#5d6f63]">{lesson.description}</p>
-                          )}
-                        </div>
-                        {done ? (
-                          <span className="shrink-0 ml-3 inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#2B8A4E] text-white text-sm font-bold">✓</span>
-                        ) : (
-                          <span className="shrink-0 ml-3 text-[#2E6FE0] font-extrabold">›</span>
-                        )}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
     </main>
   );
-}
-
-function prettifyId(id: string): string {
-  return id.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
