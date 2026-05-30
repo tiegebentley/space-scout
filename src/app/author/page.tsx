@@ -342,14 +342,26 @@ function AuthorEditor() {
 
   const toast = (m: string) => { setFlash(m); setTimeout(() => setFlash(null), 1800); };
 
-  // Keyboard undo/redo (ignored while typing in a field).
+  // Keyboard: undo/redo + Delete removes the selected element (ignored while
+  // typing in a field). Uses refs so the listener stays bound once.
+  const selRef = useRef({ id: null as string | null, ruleId: null as string | null });
+  selRef.current = { id: selectedId, ruleId: selectedRuleId };
+  const delRef = useRef<{ removeObj: () => void; removeRule: (id: string) => void }>({ removeObj: () => {}, removeRule: () => {} });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
-      e.preventDefault();
-      if (e.shiftKey) redo(); else undo();
+      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+      if (typing) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const { id, ruleId } = selRef.current;
+        if (ruleId) { e.preventDefault(); delRef.current.removeRule(ruleId); }
+        else if (id) { e.preventDefault(); delRef.current.removeObj(); }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -403,6 +415,9 @@ function AuthorEditor() {
   const updateRule = (id: string, p: Partial<ZoneRule>, coalesce: string | null = null) =>
     patch({ zoneRules: cur.zoneRules.map((r) => (r.id === id ? { ...r, ...p } : r)) }, coalesce);
   const removeRule = (id: string) => { patch({ zoneRules: cur.zoneRules.filter((r) => r.id !== id) }); if (selectedRuleId === id) setSelectedRuleId(null); };
+  // Keep the Delete-key handler pointed at the current remove fns (they close
+  // over the current step, so rebind each render).
+  delRef.current = { removeObj: removeSelected, removeRule };
 
   // ---- scenario pager ----
   const addScenario = (kind: StepKind = "instructional") => { const next = [...scenarios, blankScenario(kind)]; commit(next); setIdx(next.length - 1); setSelectedId(null); };
@@ -622,11 +637,12 @@ function AuthorEditor() {
           className="w-full rounded-xl border-2 border-[rgba(20,60,35,.12)] px-3 py-2 font-[Fredoka] font-bold text-lg mb-3" />
 
         {/* Undo / Redo (whole-lesson history) */}
-        <div className="flex items-center gap-1.5 mb-2">
+        <div className="flex items-center gap-2 mb-3">
           <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"
-            className="rounded-md px-2.5 py-1 text-[11px] font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer hover:bg-[#f3f7f2] disabled:opacity-35 disabled:cursor-default">↶ Undo</button>
+            className="rounded-lg px-4 py-2 text-sm font-extrabold bg-white border-2 border-[rgba(20,60,35,.18)] text-[#16241c] cursor-pointer hover:bg-[#f3f7f2] active:translate-y-[1px] disabled:opacity-30 disabled:cursor-default transition">↶ Undo</button>
           <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"
-            className="rounded-md px-2.5 py-1 text-[11px] font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer hover:bg-[#f3f7f2] disabled:opacity-35 disabled:cursor-default">↷ Redo</button>
+            className="rounded-lg px-4 py-2 text-sm font-extrabold bg-white border-2 border-[rgba(20,60,35,.18)] text-[#16241c] cursor-pointer hover:bg-[#f3f7f2] active:translate-y-[1px] disabled:opacity-30 disabled:cursor-default transition">↷ Redo</button>
+          <span className="text-[10px] font-bold text-[#9aa79f] ml-1">Ctrl+Z / Ctrl+Shift+Z · Del removes selected</span>
         </div>
 
         {/* Step pager — each pill is colored by its kind */}
