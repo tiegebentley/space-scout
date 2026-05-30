@@ -1396,11 +1396,12 @@ export class GameEngine {
     const distToGoal = Math.abs(carrier.y - goalY);
     const lateralToGoal = Math.abs(carrier.x - W / 2);
 
-    // Too far or too wide — don't shoot
-    if (distToGoal > H * 0.45) return false;
-    if (lateralToGoal > GOAL_W * 3) return false;
+    // HARD GATE: shots are only allowed from INSIDE the penalty box (the box
+    // drawn on the pitch). Anywhere outside it — even with open space — the
+    // carrier dribbles in instead of shooting from distance.
+    if (distToGoal > BOX_H) return false;
+    if (lateralToGoal > BOX_HALF_W) return false;
 
-    const nearestDef = this.nearestEnemy(carrier.x, carrier.y, carrier.side);
     const enemies = this.enemiesOf(carrier.side);
 
     // Count outfield defenders between carrier and goal
@@ -1408,20 +1409,15 @@ export class GameEngine {
     for (const e of enemies) {
       if (e.gk) continue;
       const eDepth = carrier.side === "us" ? (carrier.y - e.y) : (e.y - carrier.y);
-      if (eDepth > 0 && eDepth < distToGoal && Math.abs(e.x - carrier.x) < 70) {
+      if (eDepth > 0 && eDepth < distToGoal && Math.abs(e.x - carrier.x) < 60) {
         blockersInPath++;
       }
     }
 
-    // ALWAYS shoot if: close to goal + open space (no defenders nearby or in path)
-    if (distToGoal < H * 0.30 && nearestDef > 40 && blockersInPath === 0) return true;
-    // Shoot if inside the box area and only lightly blocked
-    if (distToGoal < H * 0.20 && blockersInPath <= 1) return true;
-    // Around the box edge with open space — take the shot
-    if (distToGoal < H * 0.35 && lateralToGoal < GOAL_W * 1.5 && nearestDef > 55 && blockersInPath === 0) return true;
-    // Random chance when in range with space
-    if (distToGoal < H * 0.38 && nearestDef > 35 && Math.random() < 0.15) return true;
-
+    // Inside the box: shoot when the path is clear, or when only lightly blocked
+    // and in close (we're already in the box, so be willing to pull the trigger).
+    if (blockersInPath === 0) return true;
+    if (distToGoal < BOX_H * 0.6 && blockersInPath <= 1) return true;
     return false;
   }
 

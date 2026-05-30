@@ -18,6 +18,9 @@ export function useGameLoop({ canvasRef, config, onEvent }: UseGameLoopOptions) 
   // Initialize engine
   useEffect(() => {
     engineRef.current = new GameEngine(config);
+    if (process.env.NODE_ENV !== "production") {
+      (window as unknown as { __ENGINE__?: GameEngine }).__ENGINE__ = engineRef.current;
+    }
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
