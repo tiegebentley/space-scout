@@ -278,9 +278,8 @@ export class GameEngine {
       // Sample a few candidate lanes across the box; pick the one with the most
       // space ahead (fewest/most-distant enemies in that channel).
       let best = (lo + hi) / 2, bestScore = -1;
-      const N = 5;
-      for (let i = 0; i < N; i++) {
-        const cx = lo + (hi - lo) * (N === 1 ? 0.5 : i / (N - 1));
+      for (let i = 0; i < 5; i++) {
+        const cx = lo + (hi - lo) * (i / 4); // 5 lanes spanning the box width
         const score = this.laneOpenness(p, cx);
         if (score > bestScore) { bestScore = score; best = cx; }
       }
