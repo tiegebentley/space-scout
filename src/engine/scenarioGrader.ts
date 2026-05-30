@@ -5,8 +5,20 @@
 import { LAB_PITCH } from "@/types/lessons";
 import type { BoardObject, Zone, RelationRule } from "@/types/lessons";
 
-function pointInZone(pt: { x: number; y: number }, z: Zone): boolean {
+export function pointInZone(pt: { x: number; y: number }, z: Zone): boolean {
   return pt.x >= z.x && pt.x <= z.x + z.w && pt.y >= z.y && pt.y <= z.y + z.h;
+}
+
+// Arrow scenario: the drawn arrow's tip (x2,y2) must land inside the target
+// zone, and the arrow must actually be drawn (non-trivial length).
+export function gradeArrowScenario(
+  arrow: BoardObject | undefined,
+  zone: Zone | null | undefined
+): boolean {
+  if (!arrow || arrow.x1 == null || arrow.y1 == null || arrow.x2 == null || arrow.y2 == null) return false;
+  const drawn = Math.hypot(arrow.x2 - arrow.x1, arrow.y2 - arrow.y1) > 25;
+  if (!drawn || !zone) return false;
+  return pointInZone({ x: arrow.x2, y: arrow.y2 }, zone);
 }
 
 // Does `player` satisfy a single relation rule against the other named object?

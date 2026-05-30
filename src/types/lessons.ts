@@ -8,14 +8,27 @@ import type { MatchConfig } from "./game";
 // coordinates below are in those units. The board component scales to fit.
 export const LAB_PITCH = { w: 1000, h: 620 } as const;
 
-// A token on the scenario board — a player or the ball.
+// A token on the scenario board — a player, the ball, or an arrow (pass/run line).
 export interface BoardObject {
   id: string;
-  type: "player" | "ball";
+  type: "player" | "ball" | "arrow";
   x: number;
   y: number;
   team?: "home" | "away"; // home = the user's team (blue), away = opponent (red)
   label?: string;         // jersey number, e.g. "6" / "11"
+  // Arrow endpoints (lab coords). type==="arrow" only.
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+  color?: string;
+  style?: "pass" | "run"; // pass = solid, run = dashed
+}
+
+// A short role description shown when a player is tapped in an `info` scenario.
+export interface InfoCard {
+  title?: string;
+  text: string;
 }
 
 // A rectangular target zone (lab coords). A dragged player satisfies its zone
@@ -63,13 +76,24 @@ export interface Scenario {
   instruction?: string;
   optimalNote?: string; // shown when the answer is revealed/correct
   explanation: string;
+  // Escalating hints shown on successive wrong attempts (index clamps to last).
+  // `nudge` is a single-hint shorthand. Falls back to optimalNote if neither set.
+  nudges?: string[];
+  nudge?: string;
   answer:
     | { mode: "move"; objectIds: string[] }
-    | { mode: "choice"; objectId?: string | null };
+    | { mode: "choice"; objectId?: string | null }
+    // arrow: user drags the named arrow's tip into the target `zone`.
+    | { mode: "arrow"; objectId: string }
+    // info: user taps each named player to reveal its role card; done = all seen.
+    | { mode: "info"; objectIds: string[] };
   zones?: Record<string, Zone | Zone[]>;       // by player id (any-of)
   relations?: Record<string, RelationRule[]>;  // by player id (all-of)
   optimals?: Record<string, { x: number; y: number }>;
+  optimal?: { x1: number; y1: number; x2: number; y2: number } | null; // arrow optimal
+  zone?: Zone | null;          // arrow target zone (the tip must land inside)
   choices?: Choice[] | null;
+  infoCards?: Record<string, InfoCard>; // by player id (info mode)
   board: { objects: BoardObject[] };
 }
 

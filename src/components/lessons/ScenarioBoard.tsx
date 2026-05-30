@@ -1,65 +1,124 @@
 "use client";
-// Native React/SVG port of the soccer-iq-lab scenario board. Renders a scenario
-// on a scaled 1000x620 pitch, lets the user drag the "home" players named in the
-// scenario answer, grades the arrangement (engine/scenarioGrader), and surfaces
-// per-player correct/incorrect feedback + optional optimal markers on reveal.
+// Native React/SVG scenario board ported from soccer-iq-lab. Renders a scenario
+// on a PORTRAIT pitch (attack up/down) to match space-scout's live game, and
+// supports all four lab answer modes:
+//   move   — drag the named home players into their zones (graded by relations+zones)
+//   choice — pick the correct option
+//   arrow  — drag an arrow's tip into a target zone (pass/run line)
+//   info   — tap each named player to reveal a role card; done when all seen
+// Plus the lab learn loop: up to 5 attempts with escalating hints, then reveal
+// the answer + explanation. All scenario DATA and grading stay in lab (landscape
+// 1000x620) coordinates; only rendering + pointer input are rotated to portrait
+// via boardTransform, so the grader's directional rules remain valid.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { LAB_PITCH } from "@/types/lessons";
 import type { BoardObject, Scenario, Zone } from "@/types/lessons";
-import { gradeMoveScenario } from "@/engine/scenarioGrader";
+import { gradeMoveScenario, gradeArrowScenario } from "@/engine/scenarioGrader";
+import { labToScreen, screenToLab, VIEW_W, VIEW_H } from "./boardTransform";
 
-const { w: PW, h: PH } = LAB_PITCH;
-const HOME = "#2E6FE0"; // blue (user's team)
-const AWAY = "#E0463B"; // red (opponent)
-const R = 22; // player token radius (lab coords)
+const PW = LAB_PITCH.w;
+const HOME = "#2E6FE0";
+const AWAY = "#E0463B";
+const R = 22;
+const MAX_TRIES = 5;
+
+// Result reported up to the LessonPlayer when a scenario resolves.
+export interface ScenarioResult {
+  solved: boolean;   // gate to advance (true once correct OR answer revealed)
+  correct: boolean;  // did the user actually get it right (for scoring)
+}
 
 interface Props {
   scenario: Scenario;
-  // Called whenever the pass/fail state changes so the parent (LessonPlayer) can
-  // gate the "Next" button. For choice scenarios, fires on selection.
-  onSolved: (solved: boolean) => void;
+  onResult: (r: ScenarioResult) => void;
 }
 
-export function ScenarioBoard({ scenario, onSolved }: Props) {
-  const isMove = scenario.answer.mode === "move";
+export function ScenarioBoard({ scenario, onResult }: Props) {
+  const mode = scenario.answer.mode;
   const draggableIds = useMemo(
     () => (scenario.answer.mode === "move" ? scenario.answer.objectIds : []),
     [scenario]
   );
-
-  // Live board positions (only home/draggable players move). Reset on scenario change.
-  const [objects, setObjects] = useState<BoardObject[]>(() =>
-    scenario.board.objects.map((o) => ({ ...o }))
+  const infoIds = useMemo(
+    () => (scenario.answer.mode === "info" ? scenario.answer.objectIds : []),
+    [scenario]
   );
-  const [solved, setSolved] = useState(false);
+  const arrowId = scenario.answer.mode === "arrow" ? scenario.answer.objectId : null;
+
+  const [objects, setObjects] = useState<BoardObject[]>(() => scenario.board.objects.map((o) => ({ ...o })));
+  const [correct, setCorrect] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [choiceIdx, setChoiceIdx] = useState<number | null>(null);
   const [perPlayer, setPerPlayer] = useState<Record<string, boolean>>({});
+  const [attempts, setAttempts] = useState(0);
+  const [verdict, setVerdict] = useState<{ kind: "ok" | "miss"; text: string } | null>(null);
+  const [viewed, setViewed] = useState<Set<string>>(new Set());
 
+  // Reset everything when the scenario changes.
   useEffect(() => {
     setObjects(scenario.board.objects.map((o) => ({ ...o })));
-    setSolved(false);
+    setCorrect(false);
     setReveal(false);
     setChoiceIdx(null);
     setPerPlayer({});
-    onSolved(false);
-  }, [scenario, onSolved]);
+    setAttempts(0);
+    setVerdict(null);
+    setViewed(new Set());
+    onResult({ solved: false, correct: false });
+  }, [scenario, onResult]);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const dragId = useRef<string | null>(null);
+  // For move/arrow drags: which object + (arrow) which endpoint.
+  const drag = useRef<{ id: string; end?: "tip" | "tail" } | null>(null);
 
-  // Convert a pointer event to lab (1000x620) coordinates.
+  // Pointer (screen) -> lab coords.
   const toLab = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * PW;
-    const y = ((clientY - rect.top) / rect.height) * PH;
-    return { x: clamp(x, R, PW - R), y: clamp(y, R, PH - R) };
+    const sx = ((clientX - rect.left) / rect.width) * VIEW_W;
+    const sy = ((clientY - rect.top) / rect.height) * VIEW_H;
+    const { x, y } = screenToLab(sx, sy);
+    return { x: clamp(x, R, PW - R), y: clamp(y, R, LAB_PITCH.h - R) };
   }, []);
 
-  const grade = useCallback(
+  // Pick the right hint for the current attempt count.
+  const hintFor = useCallback(
+    (n: number) => {
+      if (scenario.nudges?.length) return scenario.nudges[Math.min(n - 1, scenario.nudges.length - 1)];
+      if (scenario.nudge) return scenario.nudge;
+      return scenario.optimalNote || "";
+    },
+    [scenario]
+  );
+
+  // Shared "wrong answer" handling: bump attempts, show a hint, reveal at MAX.
+  // Side-effecting setters run outside the setAttempts updater to avoid setState
+  // during render.
+  const handleWrong = useCallback(() => {
+    const n = attempts + 1;
+    setAttempts(n);
+    if (n >= MAX_TRIES) {
+      setReveal(true);
+      setCorrect(false);
+      setVerdict({ kind: "miss", text: "Answer revealed." });
+      onResult({ solved: true, correct: false }); // can advance, but not scored correct
+    } else {
+      const h = hintFor(n);
+      setVerdict({ kind: "miss", text: `Not quite — try again (${n}/${MAX_TRIES}).${h ? " Hint: " + h : ""}` });
+    }
+  }, [attempts, hintFor, onResult]);
+
+  const handleRight = useCallback(() => {
+    setCorrect(true);
+    setReveal(true);
+    setVerdict({ kind: "ok", text: scenario.optimalNote || "Nice — that's it!" });
+    onResult({ solved: true, correct: true });
+  }, [scenario, onResult]);
+
+  // ---- grading per mode (called on Check / drop / pick) ----
+  const checkMove = useCallback(
     (objs: BoardObject[]) => {
       if (scenario.answer.mode !== "move") return;
       const { allCorrect, perPlayer: pp } = gradeMoveScenario(
@@ -69,123 +128,218 @@ export function ScenarioBoard({ scenario, onSolved }: Props) {
         scenario.relations
       );
       setPerPlayer(pp);
-      setSolved(allCorrect);
-      onSolved(allCorrect);
+      if (allCorrect) handleRight();
+      else handleWrong();
     },
-    [scenario, onSolved]
+    [scenario, handleRight, handleWrong]
   );
 
-  const onPointerDown = (id: string) => (e: React.PointerEvent) => {
-    if (!draggableIds.includes(id)) return;
+  const checkArrow = useCallback(
+    (objs: BoardObject[]) => {
+      if (!arrowId) return;
+      const arrow = objs.find((o) => o.id === arrowId);
+      if (gradeArrowScenario(arrow, scenario.zone)) handleRight();
+      else handleWrong();
+    },
+    [arrowId, scenario, handleRight, handleWrong]
+  );
+
+  // ---- pointer handlers ----
+  const onPointerDownObj = (id: string, end?: "tip" | "tail") => (e: React.PointerEvent) => {
+    if (reveal) return;
+    const isDraggable = draggableIds.includes(id) || (mode === "arrow" && id === arrowId);
+    if (!isDraggable) return;
     e.preventDefault();
-    dragId.current = id;
+    e.stopPropagation();
+    drag.current = { id, end };
     (e.target as Element).setPointerCapture?.(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragId.current) return;
+    if (!drag.current) return;
     const { x, y } = toLab(e.clientX, e.clientY);
-    setObjects((prev) => prev.map((o) => (o.id === dragId.current ? { ...o, x, y } : o)));
+    const { id, end } = drag.current;
+    setObjects((prev) =>
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        if (o.type === "arrow") {
+          return end === "tail" ? { ...o, x1: x, y1: y } : { ...o, x2: x, y2: y };
+        }
+        return { ...o, x, y };
+      })
+    );
   };
 
   const onPointerUp = () => {
-    if (!dragId.current) return;
-    dragId.current = null;
-    // Grade against the latest positions. `objects` in this closure is current
-    // for the just-finished drag; grading here (not inside a setState updater)
-    // keeps the parent setState out of React's render phase.
-    grade(objects);
+    if (!drag.current) return;
+    drag.current = null;
   };
+
+  // Tap a player in info mode to reveal its card. Accumulate via functional
+  // updater (rapid taps must not clobber each other); completion is detected in
+  // the effect below so no parent setState happens inside this updater.
+  const onTapInfo = (id: string) => () => {
+    if (mode !== "info" || !infoIds.includes(id)) return;
+    setViewed((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  // Info mode: when every named player has been viewed, mark solved (effect, so
+  // it runs after render — not during another component's render).
+  useEffect(() => {
+    if (mode !== "info" || correct) return;
+    if (infoIds.length > 0 && viewed.size >= infoIds.length) {
+      setCorrect(true);
+      setVerdict({ kind: "ok", text: scenario.optimalNote || "You've met everyone!" });
+      onResult({ solved: true, correct: true });
+    }
+  }, [mode, viewed, infoIds, correct, scenario, onResult]);
 
   const onPickChoice = (i: number) => {
+    if (reveal && correct) return;
     setChoiceIdx(i);
-    const correct = !!scenario.choices?.[i]?.correct;
-    setSolved(correct);
-    setReveal(true);
-    onSolved(correct);
+    const isRight = !!scenario.choices?.[i]?.correct;
+    if (isRight) handleRight();
+    else handleWrong();
   };
 
-  // Zone hints for the currently-relevant draggable players (move scenarios).
+  // Explicit Check button for move/arrow (the lab's "Reveal Answer" trigger).
+  const onCheck = () => {
+    if (mode === "move") checkMove(objects);
+    else if (mode === "arrow") checkArrow(objects);
+  };
+
+  // Zone hints for not-yet-correct draggable players (move mode).
   const zoneHints = useMemo(() => {
     const hints: { id: string; zones: Zone[] }[] = [];
-    if (scenario.zones) {
+    if (mode === "move" && scenario.zones && !reveal) {
       for (const id of draggableIds) {
+        if (perPlayer[id]) continue;
         const z = scenario.zones[id];
         if (z) hints.push({ id, zones: Array.isArray(z) ? z : [z] });
       }
     }
     return hints;
-  }, [scenario, draggableIds]);
+  }, [mode, scenario, draggableIds, reveal, perPlayer]);
+
+  const Arrow = ({ o }: { o: BoardObject }) => {
+    const a = labToScreen(o.x1 ?? o.x, o.y1 ?? o.y);
+    const b = labToScreen(o.x2 ?? o.x, o.y2 ?? o.y);
+    const col = o.color || HOME;
+    return (
+      <g>
+        <defs>
+          <marker id={`ah-${o.id}`} markerWidth={8} markerHeight={8} refX={6} refY={3} orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={col} />
+          </marker>
+        </defs>
+        <line
+          x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy}
+          stroke={col} strokeWidth={5} strokeLinecap="round"
+          strokeDasharray={o.style === "run" ? "10 8" : undefined}
+          markerEnd={`url(#ah-${o.id})`}
+        />
+        {/* draggable tip handle (arrow mode) */}
+        {mode === "arrow" && o.id === arrowId && !reveal && (
+          <circle cx={b.sx} cy={b.sy} r={14} fill="rgba(255,209,102,.5)" stroke="#FFD166" strokeWidth={3}
+            style={{ cursor: "grab" }} onPointerDown={onPointerDownObj(o.id, "tip")} />
+        )}
+      </g>
+    );
+  };
 
   return (
     <div className="w-full">
+      {/* Attack-direction hint (your team attacks UP) */}
+      <p className="text-center text-[10px] font-extrabold tracking-wide text-[#5d6f63] mb-1">▲ YOU ATTACK THIS WAY ▲</p>
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${PW} ${PH}`}
-        className="w-full rounded-2xl border-2 border-[rgba(20,60,35,.15)] touch-none select-none shadow-sm"
+        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+        className="w-full max-w-[420px] mx-auto block rounded-2xl border-2 border-[rgba(20,60,35,.15)] touch-none select-none shadow-sm"
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
       >
-        {/* Striped grass */}
+        {/* Striped grass (horizontal bands up the pitch) */}
         {Array.from({ length: 10 }).map((_, i) => (
-          <rect key={i} x={(PW / 10) * i} y={0} width={PW / 10} height={PH} fill={i % 2 ? "#2F9354" : "#2B8A4E"} />
+          <rect key={i} x={0} y={(VIEW_H / 10) * i} width={VIEW_W} height={VIEW_H / 10} fill={i % 2 ? "#2F9354" : "#2B8A4E"} />
         ))}
         {/* Markings */}
-        <rect x={6} y={6} width={PW - 12} height={PH - 12} fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={3} rx={10} />
-        <line x1={PW / 2} y1={6} x2={PW / 2} y2={PH - 6} stroke="rgba(255,255,255,.7)" strokeWidth={3} />
-        <circle cx={PW / 2} cy={PH / 2} r={70} fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={3} />
-        {/* Penalty boxes (left/right) */}
-        <rect x={6} y={PH / 2 - 130} width={120} height={260} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={3} />
-        <rect x={PW - 126} y={PH / 2 - 130} width={120} height={260} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={3} />
+        <rect x={6} y={6} width={VIEW_W - 12} height={VIEW_H - 12} fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={3} rx={10} />
+        <line x1={6} y1={VIEW_H / 2} x2={VIEW_W - 6} y2={VIEW_H / 2} stroke="rgba(255,255,255,.7)" strokeWidth={3} />
+        <circle cx={VIEW_W / 2} cy={VIEW_H / 2} r={70} fill="none" stroke="rgba(255,255,255,.7)" strokeWidth={3} />
+        {/* Goal boxes top/bottom */}
+        <rect x={VIEW_W / 2 - 130} y={6} width={260} height={120} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={3} />
+        <rect x={VIEW_W / 2 - 130} y={VIEW_H - 126} width={260} height={120} fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={3} />
 
-        {/* Zone hints (dashed gold target areas) for draggable players not yet correct */}
-        {!reveal &&
-          zoneHints.map(({ id, zones }) =>
-            zones.map((z, zi) =>
-              perPlayer[id] ? null : (
-                <rect
-                  key={`${id}-${zi}`}
-                  x={z.x}
-                  y={z.y}
-                  width={z.w}
-                  height={z.h}
-                  fill="rgba(255,209,102,.18)"
-                  stroke="rgba(255,209,102,.9)"
-                  strokeWidth={3}
-                  strokeDasharray="10 8"
-                  rx={10}
-                />
-              )
-            )
-          )}
+        {/* Zone hints */}
+        {zoneHints.map(({ id, zones }) =>
+          zones.map((z, zi) => {
+            // Rotate the zone rect: a lab rect [x..x+w]x[y..y+h] maps to a screen
+            // rect spanning the transformed corners.
+            const c1 = labToScreen(z.x, z.y);
+            const c2 = labToScreen(z.x + z.w, z.y + z.h);
+            const x = Math.min(c1.sx, c2.sx), y = Math.min(c1.sy, c2.sy);
+            return (
+              <rect key={`${id}-${zi}`} x={x} y={y} width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)}
+                fill="rgba(255,209,102,.18)" stroke="rgba(255,209,102,.9)" strokeWidth={3} strokeDasharray="10 8" rx={10} />
+            );
+          })
+        )}
 
-        {/* Optimal markers on reveal */}
-        {reveal &&
-          scenario.optimals &&
-          Object.entries(scenario.optimals).map(([id, p]) => (
-            <circle key={`opt-${id}`} cx={p.x} cy={p.y} r={R + 6} fill="none" stroke="#FFD166" strokeWidth={4} strokeDasharray="6 6" />
-          ))}
+        {/* Arrow target zone on reveal (arrow mode) */}
+        {reveal && mode === "arrow" && scenario.zone && (() => {
+          const z = scenario.zone;
+          const c1 = labToScreen(z.x, z.y), c2 = labToScreen(z.x + z.w, z.y + z.h);
+          return <rect x={Math.min(c1.sx, c2.sx)} y={Math.min(c1.sy, c2.sy)} width={Math.abs(c2.sx - c1.sx)} height={Math.abs(c2.sy - c1.sy)} fill="rgba(255,209,102,.18)" stroke="#FFD166" strokeWidth={3} rx={10} />;
+        })()}
+
+        {/* Optimal markers on reveal (move mode) */}
+        {reveal && mode === "move" && scenario.optimals &&
+          Object.entries(scenario.optimals).map(([id, p]) => {
+            const s = labToScreen(p.x, p.y);
+            return <circle key={`opt-${id}`} cx={s.sx} cy={s.sy} r={R + 6} fill="none" stroke="#FFD166" strokeWidth={4} strokeDasharray="6 6" />;
+          })}
+
+        {/* Optimal arrow on reveal */}
+        {reveal && mode === "arrow" && scenario.optimal && (() => {
+          const a = labToScreen(scenario.optimal.x1, scenario.optimal.y1);
+          const b = labToScreen(scenario.optimal.x2, scenario.optimal.y2);
+          return <line x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy} stroke="#FFD166" strokeWidth={4} strokeDasharray="6 6" />;
+        })()}
 
         {/* Tokens */}
         {objects.map((o) => {
+          if (o.type === "arrow") return <Arrow key={o.id} o={o} />;
+          const s = labToScreen(o.x, o.y);
           if (o.type === "ball") {
-            return <circle key={o.id} cx={o.x} cy={o.y} r={12} fill="#fff" stroke="#222" strokeWidth={2} />;
+            return <circle key={o.id} cx={s.sx} cy={s.sy} r={12} fill="#fff" stroke="#222" strokeWidth={2} />;
           }
           const isHome = o.team === "home";
-          const draggable = draggableIds.includes(o.id);
+          const isDraggable = draggableIds.includes(o.id);
+          const isInfo = infoIds.includes(o.id);
           const graded = o.id in perPlayer;
           const ok = perPlayer[o.id];
-          const ring = graded ? (ok ? "#2B8A4E" : "#E0463B") : draggable ? "#FFD166" : "rgba(255,255,255,.85)";
+          const seen = viewed.has(o.id);
+          const ring = graded
+            ? ok ? "#2B8A4E" : "#E0463B"
+            : isInfo ? (seen ? "#2B8A4E" : "#FFD166")
+            : isDraggable ? "#FFD166"
+            : "rgba(255,255,255,.85)";
+          const interactive = isDraggable || isInfo;
           return (
             <g
               key={o.id}
-              onPointerDown={onPointerDown(o.id)}
-              className={clsx(draggable && "cursor-grab")}
-              style={{ cursor: draggable ? "grab" : "default" }}
+              onPointerDown={isDraggable ? onPointerDownObj(o.id) : undefined}
+              onClick={isInfo ? onTapInfo(o.id) : undefined}
+              style={{ cursor: interactive ? (isInfo ? "pointer" : "grab") : "default" }}
             >
-              <circle cx={o.x} cy={o.y} r={R} fill={isHome ? HOME : AWAY} stroke={ring} strokeWidth={draggable || graded ? 5 : 2} />
-              <text x={o.x} y={o.y + 6} textAnchor="middle" fontSize={20} fontWeight={800} fill="#fff" style={{ fontFamily: "Fredoka, sans-serif", pointerEvents: "none" }}>
+              <circle cx={s.sx} cy={s.sy} r={R} fill={isHome ? HOME : AWAY} stroke={ring} strokeWidth={interactive || graded ? 5 : 2} />
+              <text x={s.sx} y={s.sy + 6} textAnchor="middle" fontSize={20} fontWeight={800} fill="#fff" style={{ fontFamily: "Fredoka, sans-serif", pointerEvents: "none" }}>
                 {o.label}
               </text>
             </g>
@@ -193,13 +347,33 @@ export function ScenarioBoard({ scenario, onSolved }: Props) {
         })}
       </svg>
 
-      {/* Choice buttons (decision scenarios) */}
-      {!isMove && scenario.choices && (
+      {/* Info cards revealed by tapping (info mode) */}
+      {mode === "info" && (
+        <div className="mt-3 grid gap-2">
+          {[...viewed].map((id) => {
+            const card = scenario.infoCards?.[id];
+            const player = scenario.board.objects.find((o) => o.id === id);
+            return (
+              <div key={id} className="rounded-xl bg-white border border-[rgba(20,60,35,.12)] px-3 py-2">
+                <p className="text-sm font-extrabold text-[#2E6FE0]">{card?.title || `Player #${player?.label}`}</p>
+                {card?.text && <p className="text-xs font-semibold text-[#33433a]">{card.text}</p>}
+              </div>
+            );
+          })}
+          {viewed.size < infoIds.length && (
+            <p className="text-xs font-bold text-[#5d6f63]">Tap each highlighted player ({viewed.size}/{infoIds.length}).</p>
+          )}
+        </div>
+      )}
+
+      {/* Choice buttons */}
+      {mode === "choice" && scenario.choices && (
         <div className="mt-3 grid gap-2">
           {scenario.choices.map((c, i) => (
             <button
               key={i}
               onClick={() => onPickChoice(i)}
+              disabled={reveal && correct}
               className={clsx(
                 "rounded-xl border-2 px-4 py-3 text-left text-sm font-bold transition-colors cursor-pointer",
                 choiceIdx === i
@@ -215,20 +389,33 @@ export function ScenarioBoard({ scenario, onSolved }: Props) {
         </div>
       )}
 
-      {/* Feedback line */}
-      <div className="mt-3 min-h-[44px]">
-        {solved ? (
-          <p className="rounded-xl bg-[#2B8A4E14] border border-[#2B8A4E55] px-3 py-2 text-sm font-bold text-[#1e5e36]">
-            ✓ {scenario.optimalNote || "Nice — that's it!"}
+      {/* Check button (move / arrow) */}
+      {(mode === "move" || mode === "arrow") && !reveal && (
+        <button
+          onClick={onCheck}
+          className="mt-3 w-full rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer hover:bg-[#2961c9]"
+        >
+          Check my answer
+        </button>
+      )}
+
+      {/* Verdict + explanation */}
+      <div className="mt-3 space-y-2">
+        {verdict && (
+          <p className={clsx(
+            "rounded-xl px-3 py-2 text-sm font-bold border",
+            verdict.kind === "ok"
+              ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]"
+              : "bg-[#fff3e0] border-[#f0b657] text-[#8a5a00]"
+          )}>
+            {verdict.kind === "ok" ? "✓ " : "✗ "}{verdict.text}
           </p>
-        ) : isMove ? (
-          <button
-            onClick={() => setReveal((r) => !r)}
-            className="text-xs font-bold text-[#2B8A4E] cursor-pointer hover:underline"
-          >
-            {reveal ? "Hide the answer" : "Show me the answer"}
-          </button>
-        ) : null}
+        )}
+        {reveal && (
+          <p className="rounded-xl bg-[#f3f7f2] border border-[rgba(20,60,35,.1)] px-3 py-2 text-[13px] leading-relaxed font-semibold text-[#33433a]">
+            {scenario.explanation}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -159,6 +159,7 @@ export interface PlayerProgress {
   matchesPlayed: number;
   achievements: Achievement[];
   completedLessons: string[]; // lesson ids finished in the Learn flow
+  lessonScores?: Record<string, number>; // best % score per lesson id
 }
 
 export interface SkillRatings {

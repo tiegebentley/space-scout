@@ -16,7 +16,7 @@ interface GameStore {
   addXp: (amount: number) => void;
   recordDrill: (drill: CompletedDrill) => void;
   recordMatch: () => void;
-  recordLesson: (lessonId: string) => void;
+  recordLesson: (lessonId: string, scorePct?: number) => void;
   updateSkill: (skill: keyof SkillRatings, delta: number) => void;
   unlockAchievement: (achievement: Achievement) => void;
 
@@ -62,6 +62,7 @@ const DEFAULT_PROGRESS: PlayerProgress = {
   matchesPlayed: 0,
   achievements: [],
   completedLessons: [],
+  lessonScores: {},
 };
 
 export const useGameStore = create<GameStore>()(
@@ -106,12 +107,19 @@ export const useGameStore = create<GameStore>()(
           },
         })),
 
-      recordLesson: (lessonId) =>
+      recordLesson: (lessonId, scorePct) =>
         set((s) => {
           const done = s.progress.completedLessons ?? [];
-          if (done.includes(lessonId)) return s;
+          const scores = { ...(s.progress.lessonScores ?? {}) };
+          if (scorePct != null) {
+            scores[lessonId] = Math.max(scores[lessonId] ?? 0, scorePct); // keep best
+          }
           return {
-            progress: { ...s.progress, completedLessons: [...done, lessonId] },
+            progress: {
+              ...s.progress,
+              completedLessons: done.includes(lessonId) ? done : [...done, lessonId],
+              lessonScores: scores,
+            },
           };
         }),
 

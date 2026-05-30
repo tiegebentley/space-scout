@@ -4,8 +4,10 @@
 // "coming soon" states, and get filled in during the content port.
 import type { Lesson, Course } from "@/types/lessons";
 import { SPACING_LESSON } from "./spacing";
+import { MEET_SHAPE_LESSON } from "./meet-shape";
 
 export const LESSONS: Record<string, Lesson> = {
+  [MEET_SHAPE_LESSON.id]: MEET_SHAPE_LESSON,
   [SPACING_LESSON.id]: SPACING_LESSON,
 };
 
