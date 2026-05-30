@@ -259,9 +259,13 @@ function AuthorEditor() {
 
   const players = cur.objects.filter((o) => o.type === "player");
 
+  const GROUP = "rounded-xl border border-[rgba(20,60,35,.12)] bg-[#f8faf8] p-3 space-y-2";
+  const GLABEL = "text-[10px] font-extrabold tracking-wide text-[#5d6f63]";
+
   return (
     <main className="flex-1 flex flex-col items-center p-4">
-      <div className="w-full max-w-xl">
+      <div className="w-full max-w-6xl">
+        {/* Top bar */}
         <div className="flex items-center justify-between mb-3">
           <Link href="/learn" className="text-xs font-extrabold text-[#5d6f63] hover:underline">← Lessons</Link>
           <span className="text-xs font-extrabold tracking-wide text-[#5d6f63]">{editParam ? "EDITING" : "AUTHOR"}</span>
@@ -271,7 +275,7 @@ function AuthorEditor() {
           className="w-full rounded-xl border-2 border-[rgba(20,60,35,.12)] px-3 py-2 font-[Fredoka] font-bold text-lg mb-3" />
 
         {/* Scenario pager */}
-        <div className="flex items-center gap-1.5 flex-wrap mb-3">
+        <div className="flex items-center gap-1.5 flex-wrap mb-4">
           <span className="text-[11px] font-extrabold text-[#5d6f63] mr-1">Scenarios:</span>
           {scenarios.map((_, i) => (
             <button key={i} onClick={() => { setIdx(i); setSelectedId(null); }}
@@ -283,124 +287,135 @@ function AuthorEditor() {
           {scenarios.length > 1 && <button onClick={delScenario} className="w-7 h-7 rounded-lg text-xs bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] cursor-pointer" title="Delete scenario">🗑</button>}
         </div>
 
-        {/* Board */}
-        <p className="text-center text-[10px] font-extrabold tracking-wide text-[#5d6f63] mb-1">▲ ATTACK THIS WAY ▲</p>
-        <AuthorBoard
-          objects={cur.objects} setObjects={setObjects}
-          answerMode={cur.mode} answerIds={cur.answerIds} arrowId={cur.arrowId}
-          zones={cur.zones} setZone={setZone}
-          tool={tool} selectedId={selectedId} onSelect={setSelectedId}
-        />
-
-        {/* Palette */}
-        <div className="flex flex-wrap gap-2 mt-3">
-          <button onClick={() => addPlayer("home")} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-[#2E6FE0] text-white cursor-pointer">+ Blue</button>
-          <button onClick={() => addPlayer("away")} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-[#E0463B] text-white cursor-pointer">+ Red</button>
-          <button onClick={addBall} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-white border border-[rgba(20,60,35,.15)] cursor-pointer">+ Ball</button>
-          {cur.mode === "arrow" && <button onClick={addArrow} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-white border border-[rgba(20,60,35,.15)] cursor-pointer">+ Arrow</button>}
-          <button onClick={removeSelected} disabled={!selectedId} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] cursor-pointer disabled:opacity-40">Remove selected</button>
-        </div>
-
-        {/* Answer mode */}
-        <div className="mt-4">
-          <p className="text-[11px] font-extrabold text-[#5d6f63] mb-1">ANSWER TYPE</p>
-          <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[11px] font-extrabold">
-            {(["move", "choice", "arrow", "info"] as Mode[]).map((m) => (
-              <button key={m} onClick={() => patch({ mode: m })}
-                className={clsx("flex-1 py-1.5 cursor-pointer capitalize", cur.mode === m ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}>{m}</button>
-            ))}
+        {/* Two columns: FIELD on the left, EDITOR sidebar on the right */}
+        <div className="flex flex-col md:flex-row md:items-start gap-5">
+          {/* FIELD (left) */}
+          <div className="md:w-[420px] md:shrink-0 md:sticky md:top-4">
+            <p className="text-center text-[11px] font-extrabold tracking-wide text-[#5d6f63] mb-1">▲ ATTACK THIS WAY ▲</p>
+            <AuthorBoard
+              objects={cur.objects} setObjects={setObjects}
+              answerMode={cur.mode} answerIds={cur.answerIds} arrowId={cur.arrowId}
+              zones={cur.zones} setZone={setZone}
+              tool={tool} selectedId={selectedId} onSelect={setSelectedId}
+            />
           </div>
-        </div>
 
-        {/* Mode-specific controls */}
-        {(cur.mode === "move" || cur.mode === "info") && (
-          <div className="mt-3">
-            <p className="text-[11px] font-extrabold text-[#5d6f63] mb-1">
-              {cur.mode === "move" ? "ANSWER PLAYERS (tap to toggle, then draw a zone for each)" : "INFO PLAYERS (tap to toggle)"}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {players.map((p) => (
-                <button key={p.id} onClick={() => toggleAnswer(p.id)}
-                  className={clsx("rounded-lg px-2.5 py-1 text-xs font-extrabold cursor-pointer border",
-                    cur.answerIds.includes(p.id) ? "bg-[#FFD166] text-[#5a4500] border-[#FFD166]" : "bg-white text-[#33433a] border-[rgba(20,60,35,.15)]")}>
-                  {p.team === "home" ? "Blue" : "Red"} #{p.label}
-                </button>
-              ))}
-            </div>
-            {cur.mode === "move" && cur.answerIds.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {cur.answerIds.map((id) => {
-                  const p = cur.objects.find((o) => o.id === id);
-                  return (
-                    <button key={id} onClick={() => setTool({ kind: "drawZone", forId: id })}
-                      className={clsx("rounded-lg px-2.5 py-1 text-[11px] font-bold cursor-pointer border",
-                        tool.kind === "drawZone" && tool.forId === id ? "bg-[#FFD166] border-[#FFD166]" : cur.zones[id] ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]" : "bg-white border-[rgba(20,60,35,.15)]")}>
-                      {cur.zones[id] ? "✓ " : "Draw zone: "}#{p?.label}
-                    </button>
-                  );
-                })}
+          {/* EDITOR (right) */}
+          <div className="flex-1 min-w-0 space-y-3">
+            {/* Add objects */}
+            <div className={GROUP}>
+              <p className={GLABEL}>ADD TO THE BOARD</p>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => addPlayer("home")} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-[#2E6FE0] text-white cursor-pointer">+ Player (Blue)</button>
+                <button onClick={() => addPlayer("away")} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-[#E0463B] text-white cursor-pointer">+ Player (Red)</button>
+                <button onClick={addBall} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-white border border-[rgba(20,60,35,.15)] cursor-pointer">+ Ball</button>
+                {cur.mode === "arrow" && <button onClick={addArrow} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-white border border-[rgba(20,60,35,.15)] cursor-pointer">+ Arrow</button>}
+                <button onClick={removeSelected} disabled={!selectedId} className="ml-auto rounded-lg px-3 py-1.5 text-xs font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] cursor-pointer disabled:opacity-40">🗑 Del</button>
               </div>
-            )}
-            {cur.mode === "info" && cur.answerIds.map((id) => {
-              const p = cur.objects.find((o) => o.id === id);
-              const card = cur.infoCards[id] || { title: "", text: "" };
-              return (
-                <div key={id} className="mt-2 rounded-lg border border-[rgba(20,60,35,.12)] p-2">
-                  <p className="text-[11px] font-extrabold text-[#2E6FE0] mb-1">Role card for #{p?.label}</p>
-                  <input value={card.title || ""} onChange={(e) => patch({ infoCards: { ...cur.infoCards, [id]: { ...card, title: e.target.value } } })}
-                    placeholder="Title (e.g. #6 — Holding Mid)" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2 py-1 text-xs font-bold mb-1" />
-                  <textarea value={card.text} onChange={(e) => patch({ infoCards: { ...cur.infoCards, [id]: { ...card, text: e.target.value } } })}
-                    placeholder="What this player does" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2 py-1 text-xs font-semibold" rows={2} />
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {cur.mode === "arrow" && (
-          <p className="mt-3 text-[11px] font-semibold text-[#5d6f63]">
-            Add an arrow, then drag its gold tip to the correct target. The tip position becomes the answer (a zone is auto-created around it).
-          </p>
-        )}
-
-        {cur.mode === "choice" && (
-          <div className="mt-3">
-            <p className="text-[11px] font-extrabold text-[#5d6f63] mb-1">CHOICES (tap the circle to mark the correct one)</p>
-            <div className="flex flex-col gap-1.5">
-              {cur.choices.map((c, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <button onClick={() => patch({ choices: cur.choices.map((x, j) => ({ ...x, correct: j === i })) })}
-                    className={clsx("w-6 h-6 shrink-0 rounded-full border-2 cursor-pointer", c.correct ? "bg-[#2B8A4E] border-[#2B8A4E]" : "bg-white border-[rgba(20,60,35,.3)]")} title="Mark correct">
-                    {c.correct ? "✓" : ""}
-                  </button>
-                  <input value={c.text} onChange={(e) => patch({ choices: cur.choices.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
-                    placeholder={`Option ${i + 1}`} className="flex-1 rounded-md border border-[rgba(20,60,35,.12)] px-2 py-1 text-xs font-bold" />
-                  {cur.choices.length > 2 && <button onClick={() => patch({ choices: cur.choices.filter((_, j) => j !== i) })} className="text-[#E0463B] text-sm cursor-pointer">×</button>}
-                </div>
-              ))}
-              {cur.choices.length < 4 && <button onClick={() => patch({ choices: [...cur.choices, { text: "", correct: false }] })} className="text-xs font-bold text-[#2B8A4E] cursor-pointer self-start">+ Add option</button>}
             </div>
+
+            {/* Answer type */}
+            <div className={GROUP}>
+              <p className={GLABEL}>ANSWER TYPE</p>
+              <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[11px] font-extrabold">
+                {([["move", "Move player"], ["arrow", "Draw arrow"], ["choice", "Multiple choice"], ["info", "Info (tap)"]] as [Mode, string][]).map(([m, lbl]) => (
+                  <button key={m} onClick={() => patch({ mode: m })}
+                    className={clsx("flex-1 py-1.5 cursor-pointer", cur.mode === m ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}>{lbl}</button>
+                ))}
+              </div>
+
+              {/* Move/Info: pick answer players */}
+              {(cur.mode === "move" || cur.mode === "info") && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-[11px] font-semibold text-[#5d6f63]">
+                    {cur.mode === "move" ? "⌖ Toggle answer players, then draw a zone for each." : "⌖ Toggle the players to learn about."}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {players.map((p) => (
+                      <button key={p.id} onClick={() => toggleAnswer(p.id)}
+                        className={clsx("rounded-lg px-2.5 py-1 text-xs font-extrabold cursor-pointer border",
+                          cur.answerIds.includes(p.id) ? "bg-[#FFD166] text-[#5a4500] border-[#FFD166]" : "bg-white text-[#33433a] border-[rgba(20,60,35,.15)]")}>
+                        {p.team === "home" ? "Blue" : "Red"} #{p.label}
+                      </button>
+                    ))}
+                    {players.length === 0 && <span className="text-[11px] text-[#9aa79f]">Add players to the board first.</span>}
+                  </div>
+                  {cur.mode === "move" && cur.answerIds.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {cur.answerIds.map((id) => {
+                        const p = cur.objects.find((o) => o.id === id);
+                        return (
+                          <button key={id} onClick={() => setTool({ kind: "drawZone", forId: id })}
+                            className={clsx("rounded-lg px-2.5 py-1 text-[11px] font-bold cursor-pointer border",
+                              tool.kind === "drawZone" && tool.forId === id ? "bg-[#FFD166] border-[#FFD166]" : cur.zones[id] ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]" : "bg-white border-[rgba(20,60,35,.15)]")}>
+                            {cur.zones[id] ? "✓ zone " : "▭ Draw zone "}#{p?.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {cur.mode === "info" && cur.answerIds.map((id) => {
+                    const p = cur.objects.find((o) => o.id === id);
+                    const card = cur.infoCards[id] || { title: "", text: "" };
+                    return (
+                      <div key={id} className="rounded-lg border border-[rgba(20,60,35,.12)] bg-white p-2">
+                        <p className="text-[11px] font-extrabold text-[#2E6FE0] mb-1">Role card for #{p?.label}</p>
+                        <input value={card.title || ""} onChange={(e) => patch({ infoCards: { ...cur.infoCards, [id]: { ...card, title: e.target.value } } })}
+                          placeholder="Title (e.g. #6 — Holding Mid)" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2 py-1 text-xs font-bold mb-1" />
+                        <textarea value={card.text} onChange={(e) => patch({ infoCards: { ...cur.infoCards, [id]: { ...card, text: e.target.value } } })}
+                          placeholder="What this player does" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2 py-1 text-xs font-semibold" rows={2} />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {cur.mode === "arrow" && (
+                <p className="text-[11px] font-semibold text-[#5d6f63] pt-1">
+                  Add an arrow, then drag its gold tip to the correct target — the tip becomes the answer.
+                </p>
+              )}
+
+              {cur.mode === "choice" && (
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-[11px] font-semibold text-[#5d6f63]">Tap the circle to mark the correct option.</p>
+                  {cur.choices.map((c, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <button onClick={() => patch({ choices: cur.choices.map((x, j) => ({ ...x, correct: j === i })) })}
+                        className={clsx("w-6 h-6 shrink-0 rounded-full border-2 cursor-pointer text-xs text-white", c.correct ? "bg-[#2B8A4E] border-[#2B8A4E]" : "bg-white border-[rgba(20,60,35,.3)]")} title="Mark correct">
+                        {c.correct ? "✓" : ""}
+                      </button>
+                      <input value={c.text} onChange={(e) => patch({ choices: cur.choices.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) })}
+                        placeholder={`Option ${i + 1}`} className="flex-1 rounded-md border border-[rgba(20,60,35,.12)] px-2 py-1 text-xs font-bold bg-white" />
+                      {cur.choices.length > 2 && <button onClick={() => patch({ choices: cur.choices.filter((_, j) => j !== i) })} className="text-[#E0463B] text-sm cursor-pointer">×</button>}
+                    </div>
+                  ))}
+                  {cur.choices.length < 4 && <button onClick={() => patch({ choices: [...cur.choices, { text: "", correct: false }] })} className="text-xs font-bold text-[#2B8A4E] cursor-pointer">+ Add Option</button>}
+                </div>
+              )}
+            </div>
+
+            {/* Text fields */}
+            <div className={GROUP}>
+              <p className={GLABEL}>QUESTION &amp; EXPLANATION</p>
+              <input value={cur.question} onChange={(e) => patch({ question: e.target.value })} placeholder="Question (what the player sees)" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2.5 py-1.5 text-sm font-bold bg-white" />
+              <input value={cur.instruction} onChange={(e) => patch({ instruction: e.target.value })} placeholder="Instruction (what to do)" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2.5 py-1.5 text-xs font-semibold bg-white" />
+              <input value={cur.optimalNote} onChange={(e) => patch({ optimalNote: e.target.value })} placeholder="Success note (shown when correct)" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2.5 py-1.5 text-xs font-semibold bg-white" />
+              <textarea value={cur.explanation} onChange={(e) => patch({ explanation: e.target.value })} placeholder="Explanation (the why — shown on reveal)" rows={2} className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2.5 py-1.5 text-xs font-semibold bg-white" />
+            </div>
+
+            {/* Actions */}
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={onTest} className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer">▶ Test</button>
+              <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer">💾 {editingOwnId ? "Update" : "Save"} lesson</button>
+              <button onClick={onExport} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Export JSON</button>
+              <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Import JSON</button>
+              <input ref={fileRef} type="file" accept="application/json" onChange={onImport} className="hidden" />
+            </div>
+
+            {flash && <p className="text-center text-sm font-bold text-[#2B8A4E]">{flash}</p>}
           </div>
-        )}
-
-        {/* Text fields */}
-        <div className="mt-4 flex flex-col gap-2">
-          <input value={cur.question} onChange={(e) => patch({ question: e.target.value })} placeholder="Question (what the player sees)" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2.5 py-1.5 text-sm font-bold" />
-          <input value={cur.instruction} onChange={(e) => patch({ instruction: e.target.value })} placeholder="Instruction (what to do)" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2.5 py-1.5 text-xs font-semibold" />
-          <input value={cur.optimalNote} onChange={(e) => patch({ optimalNote: e.target.value })} placeholder="Success note (shown when correct)" className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2.5 py-1.5 text-xs font-semibold" />
-          <textarea value={cur.explanation} onChange={(e) => patch({ explanation: e.target.value })} placeholder="Explanation (the why — shown on reveal)" rows={2} className="w-full rounded-md border border-[rgba(20,60,35,.12)] px-2.5 py-1.5 text-xs font-semibold" />
         </div>
-
-        {/* Actions */}
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button onClick={onTest} className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer">▶ Test play</button>
-          <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer">Save lesson</button>
-          <button onClick={onExport} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Export JSON</button>
-          <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Import JSON</button>
-          <input ref={fileRef} type="file" accept="application/json" onChange={onImport} className="hidden" />
-        </div>
-
-        {flash && <p className="mt-3 text-center text-sm font-bold text-[#2B8A4E]">{flash}</p>}
       </div>
     </main>
   );
