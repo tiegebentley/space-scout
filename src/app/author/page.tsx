@@ -10,11 +10,13 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { clsx } from "clsx";
 import { AuthorBoard, type AuthorTool } from "@/components/lessons/AuthorBoard";
+import { FormationPreview } from "@/components/lessons/FormationPreview";
 import { LessonPlayer } from "@/components/lessons/LessonPlayer";
 import { useGameStore } from "@/stores/gameStore";
 import { getLesson } from "@/data/lessons";
 import { W, H } from "@/engine/constants";
 import type { BoardObject, Scenario, Zone, Lesson, Choice, InfoCard, LessonStep, ScenarioObjective } from "@/types/lessons";
+import type { ZoneRule } from "@/types/game";
 
 type Mode = "move" | "choice" | "arrow" | "info";
 // The three lesson modes a step can be.
@@ -24,7 +26,11 @@ type ObjType = "passCount" | "receiveInZone" | "score" | "keepPossession" | "win
 interface DraftScenario {
   id: string;
   stepKind: StepKind;        // which of the 3 modes this step is
-  // Instructional (static board) fields:
+  // Instructional (static board) SETUP + content fields:
+  questionType: "positioning" | "movement" | "decision";
+  difficulty: "beginner" | "intermediate" | "advanced";
+  youAre: "home" | "away";
+  attackDir: "right" | "left";
   question: string;
   instruction: string;
   optimalNote: string;
@@ -45,6 +51,7 @@ interface DraftScenario {
   objType: ObjType;
   objTarget: number;
   objToRole: string;         // passCount: pass-to role; receiveInZone: receiver
+  zoneRules: ZoneRule[];     // boundaries / rules for scenario & game steps
 }
 
 let seq = 0;
@@ -53,20 +60,22 @@ const nid = (p: string) => `${p}-${Date.now().toString(36)}-${seq++}`;
 function blankScenario(kind: StepKind = "instructional"): DraftScenario {
   return {
     id: nid("sc"), stepKind: kind,
+    questionType: "positioning", difficulty: "beginner", youAre: "home", attackDir: "right",
     question: "", instruction: "", optimalNote: "", explanation: "",
     mode: "move", objects: [], answerIds: [], arrowId: null, zones: {}, choices: [
       { text: "", correct: true }, { text: "", correct: false },
     ], infoCards: {},
     liveTitle: kind === "game" ? "Now play a game" : "Try it live",
     liveBody: "", format: "5v5", userRole: "hold", forcedRestart: "",
-    objType: "passCount", objTarget: 5, objToRole: "gk",
+    objType: "passCount", objTarget: 5, objToRole: "gk", zoneRules: [],
   };
 }
 
 // Convert a draft into a real Scenario for play/export.
 function toScenario(d: DraftScenario): Scenario {
   const base = {
-    id: d.id, format: "5v5-1-2-1", youAre: "home" as const, attackDir: "right" as const,
+    id: d.id, format: "5v5-1-2-1", type: d.questionType, difficulty: d.difficulty,
+    youAre: d.youAre, attackDir: d.attackDir,
     question: d.question || "Untitled scenario", instruction: d.instruction,
     optimalNote: d.optimalNote, explanation: d.explanation,
     board: { objects: d.objects },
@@ -117,7 +126,7 @@ function draftToStep(d: DraftScenario): LessonStep {
       kind: "live-scenario",
       title: d.liveTitle || "Try it live",
       body: d.liveBody,
-      matchConfig: { format: d.format, userRole: d.userRole },
+      matchConfig: { format: d.format, userRole: d.userRole, zoneRules: d.zoneRules },
       objective: draftToObjective(d),
       scenarioSetup: d.forcedRestart ? { forcedRestart: d.forcedRestart } : undefined,
     };
@@ -127,7 +136,7 @@ function draftToStep(d: DraftScenario): LessonStep {
       kind: "play",
       title: d.liveTitle || "Play a game",
       body: d.liveBody,
-      matchConfig: { format: d.format, userRole: d.userRole },
+      matchConfig: { format: d.format, userRole: d.userRole, zoneRules: d.zoneRules },
     };
   }
   return { kind: "scenario", scenario: toScenario(d) };
@@ -139,6 +148,9 @@ function scenarioToDraft(s: Scenario): DraftScenario {
   return {
     ...blankScenario("instructional"),
     id: s.id || nid("sc"),
+    questionType: (s.type as DraftScenario["questionType"]) || "positioning",
+    difficulty: (s.difficulty as DraftScenario["difficulty"]) || "beginner",
+    youAre: s.youAre || "home", attackDir: s.attackDir || "right",
     question: s.question || "", instruction: s.instruction || "",
     optimalNote: s.optimalNote || "", explanation: s.explanation || "",
     mode: s.answer.mode,
@@ -164,6 +176,7 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.liveTitle = st.title; d.liveBody = st.body;
       d.format = (st.matchConfig.format as DraftScenario["format"]) ?? "5v5";
       d.userRole = st.matchConfig.userRole ?? "hold";
+      d.zoneRules = st.matchConfig.zoneRules ?? [];
       d.forcedRestart = st.scenarioSetup?.forcedRestart ?? "";
       d.objType = st.objective.type;
       d.objTarget = st.objective.type === "keepPossession" ? st.objective.seconds
@@ -177,6 +190,7 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.liveTitle = st.title; d.liveBody = st.body;
       d.format = (st.matchConfig.format as DraftScenario["format"]) ?? "5v5";
       d.userRole = st.matchConfig.userRole ?? "hold";
+      d.zoneRules = st.matchConfig.zoneRules ?? [];
       drafts.push(d);
     }
     // explain steps are skipped (the author models content via scenarios/steps)
@@ -400,20 +414,23 @@ function AuthorEditor() {
           </p>
         </div>
 
-        {/* Two columns: FIELD on the left, EDITOR sidebar on the right */}
+        {/* Two columns: FIELD on the left, EDITOR sidebar on the right.
+            Instructional → editable static board. Scenario/Game → formation
+            preview of the configured match (so the field always shows). */}
         <div className="flex flex-col md:flex-row md:items-start gap-5">
-          {/* FIELD (left) — only the Instructional static-board editor uses it */}
-          {cur.stepKind === "instructional" && (
           <div className="md:w-[420px] md:shrink-0 md:sticky md:top-4">
             <p className="text-center text-[11px] font-extrabold tracking-wide text-[#5d6f63] mb-1">▲ ATTACK THIS WAY ▲</p>
-            <AuthorBoard
-              objects={cur.objects} setObjects={setObjects}
-              answerMode={cur.mode} answerIds={cur.answerIds} arrowId={cur.arrowId}
-              zones={cur.zones} setZone={setZone}
-              tool={tool} selectedId={selectedId} onSelect={setSelectedId}
-            />
+            {cur.stepKind === "instructional" ? (
+              <AuthorBoard
+                objects={cur.objects} setObjects={setObjects}
+                answerMode={cur.mode} answerIds={cur.answerIds} arrowId={cur.arrowId}
+                zones={cur.zones} setZone={setZone}
+                tool={tool} selectedId={selectedId} onSelect={setSelectedId}
+              />
+            ) : (
+              <FormationPreview format={cur.format} userRole={cur.userRole} zoneRules={cur.zoneRules} />
+            )}
           </div>
-          )}
 
           {/* EDITOR (right) */}
           <div className="flex-1 min-w-0 space-y-3">
@@ -492,6 +509,39 @@ function AuthorEditor() {
 
             {/* ── INSTRUCTIONAL (static board) editor ── */}
             {cur.stepKind === "instructional" && <>
+            {/* Setup (lab-style) */}
+            <div className={GROUP}>
+              <p className={GLABEL}>SETUP</p>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-[#5d6f63] w-20">Question</span>
+                <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[10px] font-extrabold">
+                  {(["positioning", "movement", "decision"] as const).map((q) => (
+                    <button key={q} onClick={() => patch({ questionType: q })} className={clsx("px-2 py-1 cursor-pointer capitalize", cur.questionType === q ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}>{q}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-[#5d6f63] w-20">Difficulty</span>
+                <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[10px] font-extrabold">
+                  {(["beginner", "intermediate", "advanced"] as const).map((q) => (
+                    <button key={q} onClick={() => patch({ difficulty: q })} className={clsx("px-2 py-1 cursor-pointer capitalize", cur.difficulty === q ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}>{q}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-[#5d6f63] w-20">You are</span>
+                <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[10px] font-extrabold">
+                  <button onClick={() => patch({ youAre: "home" })} className={clsx("px-3 py-1 cursor-pointer", cur.youAre === "home" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}>Blue</button>
+                  <button onClick={() => patch({ youAre: "away" })} className={clsx("px-3 py-1 cursor-pointer", cur.youAre === "away" ? "bg-[#E0463B] text-white" : "bg-white text-[#5d6f63]")}>Red</button>
+                </div>
+                <span className="text-[11px] font-bold text-[#5d6f63] ml-2">Attacking</span>
+                <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[10px] font-extrabold">
+                  <button onClick={() => patch({ attackDir: "right" })} className={clsx("px-2 py-1 cursor-pointer", cur.attackDir === "right" ? "bg-[#16241c] text-white" : "bg-white text-[#5d6f63]")}>→ Right</button>
+                  <button onClick={() => patch({ attackDir: "left" })} className={clsx("px-2 py-1 cursor-pointer", cur.attackDir === "left" ? "bg-[#16241c] text-white" : "bg-white text-[#5d6f63]")}>Left ←</button>
+                </div>
+              </div>
+            </div>
+
             {/* Add objects */}
             <div className={GROUP}>
               <p className={GLABEL}>ADD TO THE BOARD</p>
@@ -502,6 +552,21 @@ function AuthorEditor() {
                 {cur.mode === "arrow" && <button onClick={addArrow} className="rounded-lg px-3 py-1.5 text-xs font-extrabold bg-white border border-[rgba(20,60,35,.15)] cursor-pointer">+ Arrow</button>}
                 <button onClick={removeSelected} disabled={!selectedId} className="ml-auto rounded-lg px-3 py-1.5 text-xs font-extrabold bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] cursor-pointer disabled:opacity-40">🗑 Del</button>
               </div>
+              {/* Selected player: color + label (lab parity) */}
+              {(() => {
+                const sel = cur.objects.find((o) => o.id === selectedId && o.type === "player");
+                if (!sel) return null;
+                const setSel = (patchObj: Partial<BoardObject>) => setObjects(cur.objects.map((o) => o.id === sel.id ? { ...o, ...patchObj } : o));
+                return (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[11px] font-bold text-[#5d6f63]">Selected:</span>
+                    <button onClick={() => setSel({ team: "home" })} className={clsx("w-6 h-6 rounded-full cursor-pointer", sel.team === "home" ? "ring-2 ring-offset-1 ring-[#2E6FE0]" : "")} style={{ background: "#2E6FE0" }} title="Blue" />
+                    <button onClick={() => setSel({ team: "away" })} className={clsx("w-6 h-6 rounded-full cursor-pointer", sel.team === "away" ? "ring-2 ring-offset-1 ring-[#E0463B]" : "")} style={{ background: "#E0463B" }} title="Red" />
+                    <span className="text-[11px] font-bold text-[#5d6f63] ml-1">Label</span>
+                    <input value={sel.label ?? ""} onChange={(e) => setSel({ label: e.target.value.slice(0, 3) })} className="w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Answer type */}
@@ -595,12 +660,27 @@ function AuthorEditor() {
             </div>
             </>}
 
+            {/* Ready checklist + step counter (lab parity) */}
+            {(() => {
+              const ready =
+                cur.stepKind === "instructional"
+                  ? !!cur.question.trim() && (cur.mode === "choice" ? cur.choices.some((c) => c.correct && c.text.trim()) : cur.answerIds.length > 0 || cur.mode === "arrow")
+                  : !!cur.liveTitle.trim();
+              return (
+                <div className="flex items-center justify-between text-[11px] font-bold px-1">
+                  <span className={ready ? "text-[#2B8A4E]" : "text-[#9aa79f]"}>{ready ? "✓ Ready to add" : "Fill in this step…"}</span>
+                  <span className="text-[#5d6f63]">{scenarios.length} step{scenarios.length !== 1 ? "s" : ""} in lesson</span>
+                </div>
+              );
+            })()}
+
             {/* Actions */}
             <div className="grid grid-cols-2 gap-2">
               <button onClick={onTest} className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-2.5 cursor-pointer">▶ Test</button>
+              <button onClick={() => addScenario(cur.stepKind)} className="rounded-xl bg-white border-2 border-[#2B8A4E] text-[#2B8A4E] font-extrabold text-sm py-2.5 cursor-pointer">＋ Add Step</button>
               <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer">💾 {editingOwnId ? "Update" : "Save"} lesson</button>
               <button onClick={onExport} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Export JSON</button>
-              <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Import JSON</button>
+              <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer col-span-2">Import JSON</button>
               <input ref={fileRef} type="file" accept="application/json" onChange={onImport} className="hidden" />
             </div>
 
