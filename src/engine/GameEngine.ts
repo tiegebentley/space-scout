@@ -253,6 +253,65 @@ export class GameEngine {
     }
   }
 
+  // The X (width) the ball-carrier should aim for. With no active zone box, that's
+  // goal-center (unchanged behavior). Inside a box, it's a chosen lane within the
+  // box — re-picked toward open space every ~2s or when the current lane is
+  // blocked by a defender — so the carrier uses the whole box width (attack the
+  // outside, or cut inside) instead of hugging the inside line.
+  private carryLaneX(p: Player): number {
+    const rule = this.activeZoneRuleFor(p);
+    if (!rule || (rule.movement ?? "roam") === "free") {
+      p.carryTimer = 0; // forget any lane so it re-picks next time we're boxed
+      return W / 2;
+    }
+    const xMin = L + (R - L) * rule.xMin;
+    const xMax = L + (R - L) * rule.xMax;
+    const inset = Math.min(18, (xMax - xMin) / 2);
+    const lo = xMin + inset, hi = xMax - inset;
+
+    // Is the current lane blocked? (a defender close on the path ahead)
+    const blocked = p.carryLaneX !== undefined &&
+      this.laneBlockedAhead(p, p.carryLaneX);
+    p.carryTimer = (p.carryTimer ?? 0) - 1;
+
+    if (p.carryLaneX === undefined || p.carryTimer <= 0 || blocked) {
+      // Sample a few candidate lanes across the box; pick the one with the most
+      // space ahead (fewest/most-distant enemies in that channel).
+      let best = (lo + hi) / 2, bestScore = -1;
+      const N = 5;
+      for (let i = 0; i < N; i++) {
+        const cx = lo + (hi - lo) * (N === 1 ? 0.5 : i / (N - 1));
+        const score = this.laneOpenness(p, cx);
+        if (score > bestScore) { bestScore = score; best = cx; }
+      }
+      p.carryLaneX = best;
+      p.carryTimer = 90 + Math.floor(Math.random() * 90); // ~1.5-3s before re-evaluating
+    }
+    return clamp(p.carryLaneX, lo, hi);
+  }
+
+  // Higher = more open: distance to the nearest enemy in the channel between the
+  // carrier and the goal-ward point at width `laneX`.
+  private laneOpenness(p: Player, laneX: number): number {
+    const goalY = p.side === "us" ? TOP : BOT;
+    const en = this.enemiesOf(p.side);
+    let nearest = 1e9;
+    for (const e of en) {
+      if (e.gk || (e.frozenTimer && e.frozenTimer > 0)) continue;
+      // only enemies ahead (goal-ward) of the carrier matter for a forward lane
+      const ahead = (goalY - e.y) * this.attackDir(p.side) > -20;
+      if (!ahead) continue;
+      const d = segDist(e.x, e.y, p.x, p.y, laneX, goalY);
+      if (d < nearest) nearest = d;
+    }
+    return nearest;
+  }
+
+  // True if a defender sits close on the path from the carrier toward its lane.
+  private laneBlockedAhead(p: Player, laneX: number): boolean {
+    return this.laneOpenness(p, laneX) < 34;
+  }
+
   private kickoffPositions() {
     const formation = FORMATIONS[this.config.format] || FORMATIONS["5v5"];
     const roleKeys = Object.keys(formation);
@@ -828,8 +887,13 @@ export class GameEngine {
 
       // ===== AI CARRIER: dribble toward goal, avoiding defenders =====
       if (m === carrier) {
-        const goalX = W / 2;
         const goalY = m.side === "us" ? TOP : BOT;
+        // Default aim is goal-center. But if the carrier is inside a zone box,
+        // aim X at a chosen WIDTH-LANE inside that box instead of dead center —
+        // otherwise they always drift to the inside (central) line and hug it.
+        // The lane is re-picked toward open space, so they attack outside when
+        // the inside is covered and cut in when the outside is covered.
+        const goalX = this.carryLaneX(m);
 
         const en = this.enemiesOf(m.side);
         let nearbyEnemies = 0;

@@ -24,6 +24,11 @@ export interface Player {
   roamX?: number;
   roamY?: number;
   roamTimer?: number;
+  // While carrying the ball inside a zone box: the width-lane (screen X) the
+  // player is driving up, re-chosen toward open space periodically or when
+  // blocked — so they don't hug the inside line. Engine-managed.
+  carryLaneX?: number;
+  carryTimer?: number;
 }
 
 export type PlayerRole = "you" | "lw" | "rw" | "hold" | "fwd" | "gk" | "lcm" | "rcm";
