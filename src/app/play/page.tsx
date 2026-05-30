@@ -877,7 +877,7 @@ export default function PlayPage() {
             </div>
           )}
 
-          {/* Add rule / save preset buttons */}
+          {/* Add rule buttons */}
           <div className="flex gap-2 mt-2">
             <button
               onClick={() => addZoneRule("us")}
@@ -892,6 +892,18 @@ export default function PlayPage() {
               + Red rule
             </button>
           </div>
+
+          {/* A reachable Save at the bottom of the list, so you don't have to
+              scroll back up to the toolbar after editing rules. Same handleSave:
+              Update in place if editing a saved preset, else opens the name field. */}
+          {zoneRules.length > 0 && (
+            <button
+              onClick={handleSave}
+              className="w-full mt-2 rounded-xl py-2.5 text-xs font-extrabold bg-[#2B8A4E] text-white cursor-pointer hover:bg-[#247a44] transition-colors"
+            >
+              {justSaved ? "Saved ✓" : editingCustomPreset ? `Update “${editingCustomPreset.name}”` : "💾 Save as preset"}
+            </button>
+          )}
 
         </div>
 
