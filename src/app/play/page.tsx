@@ -118,7 +118,15 @@ export default function PlayPage() {
   const [selectedPresetId, setSelectedPresetId] = useState<string>("none");
   const [zonesOpen, setZonesOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [justSaved, setJustSaved] = useState(false);
+  const [namingNew, setNamingNew] = useState(false);
+  // Which SAVED custom preset the current zones came from. Survives edits (unlike
+  // selectedPresetId, which flips to "custom" on every change) so the top Save
+  // button can offer "Update <that preset>". Null = these zones aren't tied to a
+  // saved custom preset (free-draw or edited built-in → must save as new).
+  const [sourcePresetId, setSourcePresetId] = useState<string | null>(null);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  const savedFlashRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Draw tool: what the next box drawn on the pitch applies to.
   const [drawTeam, setDrawTeam] = useState<"us" | "them">("us");
   const [drawRole, setDrawRole] = useState<string>("");
@@ -194,6 +202,10 @@ export default function PlayPage() {
   const selectPreset = useCallback((presetId: string) => {
     setSelectedPresetId(presetId);
     setSelectedRuleId(null);
+    setNamingNew(false);
+    setSaveName("");
+    // Only custom presets can be updated in place; built-ins/"none" can't.
+    setSourcePresetId(customPresets.some((p) => p.id === presetId) ? presetId : null);
     if (presetId === "none") {
       commit([]);
       return;
@@ -205,6 +217,21 @@ export default function PlayPage() {
     }
   }, [customPresets, commit]);
 
+  const flashSaved = useCallback(() => {
+    setJustSaved(true);
+    if (savedFlashRef.current) clearTimeout(savedFlashRef.current);
+    savedFlashRef.current = setTimeout(() => setJustSaved(false), 1800);
+  }, []);
+
+  // The saved custom preset the current zones came from, if any — tracked via
+  // sourcePresetId so it survives edits (selectedPresetId flips to "custom" on
+  // every change). Built-ins / free-draw → undefined → save as a NEW preset.
+  const editingCustomPreset = useMemo(
+    () => customPresets.find((p) => p.id === sourcePresetId),
+    [customPresets, sourcePresetId]
+  );
+
+  // Save a brand-new named preset from the current zones.
   const handleSavePreset = useCallback(() => {
     const name = saveName.trim();
     if (!name || zoneRules.length === 0) return;
@@ -216,8 +243,31 @@ export default function PlayPage() {
     };
     savePreset(preset);
     setSelectedPresetId(preset.id);
+    setSourcePresetId(preset.id); // now editing this saved preset → future saves Update it
     setSaveName("");
-  }, [saveName, zoneRules, savePreset]);
+    setNamingNew(false);
+    flashSaved();
+  }, [saveName, zoneRules, savePreset, flashSaved]);
+
+  // Top-bar Save button. Updates the current custom preset in place if we're
+  // editing one; otherwise opens the name field to save a new preset.
+  const handleSave = useCallback(() => {
+    if (zoneRules.length === 0) return;
+    if (editingCustomPreset) {
+      savePreset({
+        ...editingCustomPreset,
+        description: `${zoneRules.length} rule${zoneRules.length > 1 ? "s" : ""} — custom`,
+        rules: zoneRules.map(({ id, ...rest }) => rest),
+      });
+      setSelectedPresetId(editingCustomPreset.id); // stay on the saved preset
+      setSourcePresetId(editingCustomPreset.id);
+      flashSaved();
+    } else {
+      // New (or edited built-in / free-draw) → needs a name.
+      setNamingNew(true);
+      setZonesOpen(true);
+    }
+  }, [zoneRules, editingCustomPreset, savePreset, flashSaved]);
 
   const addZoneRule = useCallback((team: "us" | "them") => {
     const defaultRole = roleKeys[0];
@@ -471,6 +521,19 @@ export default function PlayPage() {
                 >
                   ↷ Redo
                 </button>
+                <button
+                  onClick={handleSave}
+                  disabled={zoneRules.length === 0}
+                  title={editingCustomPreset ? `Update "${editingCustomPreset.name}"` : "Save these zones as a preset"}
+                  className={clsx(
+                    "rounded-md px-2.5 py-1 text-[10px] font-extrabold border cursor-pointer transition-colors disabled:opacity-35 disabled:cursor-default",
+                    justSaved
+                      ? "bg-[#2B8A4E] border-[#2B8A4E] text-white"
+                      : "bg-[#2B8A4E] border-[#2B8A4E] text-white hover:bg-[#247a44]"
+                  )}
+                >
+                  {justSaved ? "Saved ✓" : editingCustomPreset ? "Update" : "💾 Save"}
+                </button>
               </div>
             </div>
             <div className="flex gap-2">
@@ -549,16 +612,18 @@ export default function PlayPage() {
               onEndEdit={endEdit}
             />
 
-            {/* Save drawn zones as a preset — right here so boxes persist without
-                scrolling down to the separate save field. Only shown once zones
-                exist and they aren't already a saved/built-in preset. */}
-            {zoneRules.length > 0 && (selectedPresetId === "custom" || selectedPresetId === "none") && (
+            {/* Name field for saving a NEW preset. Shows for free-draw zones,
+                or when the top-bar Save button needs a name (new / edited
+                built-in). Editing a saved custom preset uses the top "Update"
+                button instead and skips this. */}
+            {zoneRules.length > 0 && (namingNew || (!editingCustomPreset && (selectedPresetId === "custom" || selectedPresetId === "none"))) && (
               <div className="flex gap-2 pt-1">
                 <input
                   type="text"
                   value={saveName}
+                  autoFocus={namingNew}
                   onChange={(e) => setSaveName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleSavePreset(); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSavePreset(); if (e.key === "Escape") setNamingNew(false); }}
                   placeholder={`Save these ${zoneRules.length} zone${zoneRules.length !== 1 ? "s" : ""} as a preset…`}
                   className="flex-1 rounded-lg border border-[rgba(20,60,35,.15)] px-2.5 py-1.5 text-xs font-bold bg-white"
                 />
