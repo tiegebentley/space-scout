@@ -125,6 +125,9 @@ export default function PlayPage() {
   // button can offer "Update <that preset>". Null = these zones aren't tied to a
   // saved custom preset (free-draw or edited built-in → must save as new).
   const [sourcePresetId, setSourcePresetId] = useState<string | null>(null);
+  // Name of the built-in being edited (so "Save" can overwrite-by-name without a
+  // prompt). Survives edits, unlike selectedPresetId which flips to "custom".
+  const [sourceBuiltinName, setSourceBuiltinName] = useState<string | null>(null);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const savedFlashRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Draw tool: what the next box drawn on the pitch applies to.
@@ -204,8 +207,9 @@ export default function PlayPage() {
     setSelectedRuleId(null);
     setNamingNew(false);
     setSaveName("");
-    // Only custom presets can be updated in place; built-ins/"none" can't.
+    // Track what we're editing so Save can overwrite without a prompt.
     setSourcePresetId(customPresets.some((p) => p.id === presetId) ? presetId : null);
+    setSourceBuiltinName(BUILTIN_PRESETS.find((p) => p.id === presetId)?.name ?? null);
     if (presetId === "none") {
       commit([]);
       return;
@@ -226,46 +230,60 @@ export default function PlayPage() {
   // The saved custom preset the current zones came from, if any. Matched by
   // sourcePresetId (survives edits — selectedPresetId flips to "custom" on every
   // change) OR by selectedPresetId itself when a custom preset is freshly picked
-  // from the dropdown. Built-ins / free-draw → undefined → save as a NEW preset.
+  // from the dropdown. Built-ins / free-draw → undefined.
   const editingCustomPreset = useMemo(
     () => customPresets.find((p) => p.id === sourcePresetId || p.id === selectedPresetId),
     [customPresets, sourcePresetId, selectedPresetId]
   );
 
-  // Save a brand-new named preset from the current zones.
-  const handleSavePreset = useCallback(() => {
-    const name = saveName.trim();
-    if (!name || zoneRules.length === 0) return;
+  // The built-in preset currently being edited, if any (tracked via sourceBuiltinName
+  // so it survives edits). Saving over a built-in creates a custom preset with the
+  // same name that shadows it in the dropdown — built-ins can't be mutated in place.
+  const editingBuiltinName = useMemo(() => {
+    const byId = BUILTIN_PRESETS.find((p) => p.id === selectedPresetId)?.name;
+    return byId ?? sourceBuiltinName ?? null;
+  }, [selectedPresetId, sourceBuiltinName]);
+
+  // Name to save over without prompting: the custom preset's name, or the
+  // built-in's name. Null → there's nothing to overwrite, so Save needs a name.
+  const overwriteName = editingCustomPreset?.name ?? editingBuiltinName ?? null;
+
+  // Save the current zones over a preset under `name`. If a custom preset with
+  // that name exists, overwrite it; else create one. Editing a built-in saves a
+  // same-named custom preset that shadows it (built-ins can't be mutated).
+  const saveOver = useCallback((name: string) => {
+    const existing = customPresets.find((p) => p.name.toLowerCase() === name.toLowerCase());
     const preset: RulePreset = {
-      id: crypto.randomUUID(),
+      id: existing ? existing.id : crypto.randomUUID(),
       name,
       description: `${zoneRules.length} rule${zoneRules.length > 1 ? "s" : ""} — custom`,
       rules: zoneRules.map(({ id, ...rest }) => rest),
     };
-    savePreset(preset);
+    savePreset(preset); // upserts by id
     setSelectedPresetId(preset.id);
-    setSourcePresetId(preset.id); // now editing this saved preset → future saves Update it
-    setSaveName("");
+    setSourcePresetId(preset.id);
+    setSourceBuiltinName(null); // it's now a custom preset
     setNamingNew(false);
+    setSaveName("");
     flashSaved();
-  }, [saveName, zoneRules, savePreset, flashSaved]);
+  }, [customPresets, zoneRules, savePreset, flashSaved]);
 
-  // Top-bar Save button. Updates the current custom preset in place if we're
-  // editing one; otherwise opens the name field to save a new preset.
+  // Save from the name field. Upserts by name (typing an existing preset's name
+  // overwrites it rather than duplicating).
+  const handleSavePreset = useCallback(() => {
+    const name = saveName.trim();
+    if (!name || zoneRules.length === 0) return;
+    saveOver(name);
+  }, [saveName, zoneRules, saveOver]);
+
+  // Primary Save button: overwrite the preset being edited (custom OR built-in)
+  // with no prompt. Only when there's nothing to overwrite (free-draw) does it
+  // open the name field.
   const handleSave = useCallback(() => {
     if (zoneRules.length === 0) return;
-    if (editingCustomPreset) {
-      savePreset({
-        ...editingCustomPreset,
-        description: `${zoneRules.length} rule${zoneRules.length > 1 ? "s" : ""} — custom`,
-        rules: zoneRules.map(({ id, ...rest }) => rest),
-      });
-      setSelectedPresetId(editingCustomPreset.id); // stay on the saved preset
-      setSourcePresetId(editingCustomPreset.id);
-      flashSaved();
+    if (overwriteName) {
+      saveOver(overwriteName);
     } else {
-      // New (or edited built-in / free-draw) → needs a name. The name field is
-      // up in the editor block, so scroll it into view + focus it.
       setNamingNew(true);
       setZonesOpen(true);
       requestAnimationFrame(() => {
@@ -274,7 +292,21 @@ export default function PlayPage() {
         (f as HTMLInputElement | null)?.focus();
       });
     }
-  }, [zoneRules, editingCustomPreset, savePreset, flashSaved]);
+  }, [zoneRules, overwriteName, saveOver]);
+
+  // "Save as new…" — always opens the name field, even when editing a preset, so
+  // you can branch a copy under a different name.
+  const handleSaveAsNew = useCallback(() => {
+    if (zoneRules.length === 0) return;
+    setNamingNew(true);
+    setZonesOpen(true);
+    requestAnimationFrame(() => {
+      const f = document.getElementById("preset-name-input");
+      f?.scrollIntoView({ behavior: "smooth", block: "center" });
+      (f as HTMLInputElement | null)?.focus();
+      (f as HTMLInputElement | null)?.select();
+    });
+  }, [zoneRules]);
 
   const addZoneRule = useCallback((team: "us" | "them") => {
     const defaultRole = roleKeys[0];
@@ -531,15 +563,10 @@ export default function PlayPage() {
                 <button
                   onClick={handleSave}
                   disabled={zoneRules.length === 0}
-                  title={editingCustomPreset ? `Update "${editingCustomPreset.name}"` : "Save these zones as a preset"}
-                  className={clsx(
-                    "rounded-md px-2.5 py-1 text-[10px] font-extrabold border cursor-pointer transition-colors disabled:opacity-35 disabled:cursor-default",
-                    justSaved
-                      ? "bg-[#2B8A4E] border-[#2B8A4E] text-white"
-                      : "bg-[#2B8A4E] border-[#2B8A4E] text-white hover:bg-[#247a44]"
-                  )}
+                  title={overwriteName ? `Save over "${overwriteName}"` : "Save these zones as a preset"}
+                  className="rounded-md px-2.5 py-1 text-[10px] font-extrabold border bg-[#2B8A4E] border-[#2B8A4E] text-white cursor-pointer hover:bg-[#247a44] transition-colors disabled:opacity-35 disabled:cursor-default"
                 >
-                  {justSaved ? "Saved ✓" : editingCustomPreset ? "Update" : "💾 Save"}
+                  {justSaved ? "Saved ✓" : overwriteName ? "Save" : "💾 Save"}
                 </button>
               </div>
             </div>
@@ -619,11 +646,12 @@ export default function PlayPage() {
               onEndEdit={endEdit}
             />
 
-            {/* Name field for saving a NEW preset. Shows for free-draw zones,
-                or when the top-bar Save button needs a name (new / edited
-                built-in). Editing a saved custom preset uses the top "Update"
-                button instead and skips this. */}
-            {zoneRules.length > 0 && (namingNew || (!editingCustomPreset && (selectedPresetId === "custom" || selectedPresetId === "none"))) && (
+            {/* Name field for saving a NEW preset. Auto-shows for free-draw zones
+                (nothing to overwrite), or whenever the user explicitly chose
+                "Save as new…" / a flow that needs a name (namingNew). When
+                editing a preset, Save overwrites silently, so this stays hidden
+                unless namingNew. */}
+            {zoneRules.length > 0 && (namingNew || !overwriteName) && (
               <div className="flex gap-2 pt-1">
                 <input
                   id="preset-name-input"
@@ -900,16 +928,26 @@ export default function PlayPage() {
             </button>
           </div>
 
-          {/* A reachable Save at the bottom of the list, so you don't have to
-              scroll back up to the toolbar after editing rules. Same handleSave:
-              Update in place if editing a saved preset, else opens the name field. */}
+          {/* Reachable Save at the bottom of the list. Pressing Save overwrites
+              the preset being edited (built-in or custom) with no prompt. The
+              "Save as new…" link branches a copy under a different name. */}
           {zoneRules.length > 0 && (
-            <button
-              onClick={handleSave}
-              className="w-full mt-2 rounded-xl py-2.5 text-xs font-extrabold bg-[#2B8A4E] text-white cursor-pointer hover:bg-[#247a44] transition-colors"
-            >
-              {justSaved ? "Saved ✓" : editingCustomPreset ? `Update “${editingCustomPreset.name}”` : "💾 Save as preset"}
-            </button>
+            <div className="mt-2 space-y-1">
+              <button
+                onClick={handleSave}
+                className="w-full rounded-xl py-2.5 text-xs font-extrabold bg-[#2B8A4E] text-white cursor-pointer hover:bg-[#247a44] transition-colors"
+              >
+                {justSaved ? "Saved ✓" : overwriteName ? `Save “${overwriteName}”` : "💾 Save as preset"}
+              </button>
+              {overwriteName && !namingNew && (
+                <button
+                  onClick={handleSaveAsNew}
+                  className="w-full rounded-lg py-1.5 text-[11px] font-bold text-[#2B8A4E] border border-[#2B8A4E]/30 cursor-pointer hover:bg-[#eafaef] transition-colors"
+                >
+                  Save as new…
+                </button>
+              )}
+            </div>
           )}
 
         </div>
