@@ -17,6 +17,7 @@ export default function LearnPage() {
   // Select the stable array reference (not a fresh `?? []`, which would change
   // the snapshot every render and trigger a Zustand update loop).
   const completed = useGameStore((s) => s.progress.completedLessons) ?? [];
+  const customLessons = useGameStore((s) => s.customLessons) ?? [];
 
   return (
     <main className="flex-1 flex flex-col items-center p-4">
@@ -24,10 +25,38 @@ export default function LearnPage() {
         <div className="flex items-center justify-between mb-4">
           <Link href="/" className="text-xs font-extrabold text-[#5d6f63] hover:underline">← Home</Link>
         </div>
-        <h1 className="font-[Fredoka] font-bold text-3xl text-[#16241c] mb-1">Learn</h1>
+        <div className="flex items-center justify-between mb-1">
+          <h1 className="font-[Fredoka] font-bold text-3xl text-[#16241c]">Learn</h1>
+          <Link href="/author" className="rounded-xl bg-[#2E6FE0] text-white text-xs font-extrabold px-3 py-2">+ Create lesson</Link>
+        </div>
         <p className="text-sm font-bold text-[#5d6f63] mb-6">
           Work through a lesson, then put it into practice in a live game.
         </p>
+
+        {/* Your custom lessons */}
+        {customLessons.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">✏️</span>
+              <h2 className="font-[Fredoka] font-semibold text-xl text-[#16241c]">Your Lessons</h2>
+            </div>
+            <div className="flex flex-col gap-2">
+              {customLessons.map((l) => (
+                <Link key={l.id} href={`/learn/${l.id}`} className="block">
+                  <div className="flex items-center justify-between rounded-xl bg-white border border-[rgba(20,60,35,.1)] shadow-sm px-4 py-3 active:translate-y-[1px] transition-transform cursor-pointer">
+                    <div>
+                      <p className="text-sm font-bold text-[#16241c]">{l.title}</p>
+                      <p className="text-[11px] font-semibold text-[#5d6f63]">{l.steps.filter((s) => s.kind === "scenario").length} scenarios</p>
+                    </div>
+                    {completed.includes(l.id)
+                      ? <span className="shrink-0 ml-3 inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#2B8A4E] text-white text-sm font-bold">✓</span>
+                      : <span className="shrink-0 ml-3 text-[#2E6FE0] font-extrabold">›</span>}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col gap-6">
           {COURSES.map((course) => (

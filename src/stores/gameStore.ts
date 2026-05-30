@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { PlayerProgress, SkillRatings, CompletedDrill, Achievement, GameMode, MatchConfig, WingerBounds, RulePreset } from "@/types/game";
+import type { Lesson } from "@/types/lessons";
 import { XP_TABLE, LEVEL_NAMES, WINGER_X_BOUNDS } from "@/engine/constants";
 
 interface GameStore {
@@ -28,6 +29,11 @@ interface GameStore {
   customPresets: RulePreset[];
   savePreset: (preset: RulePreset) => void;
   deletePreset: (id: string) => void;
+
+  // custom lessons authored in /author (persisted)
+  customLessons: Lesson[];
+  saveCustomLesson: (lesson: Lesson) => void;
+  deleteCustomLesson: (id: string) => void;
 
   // audio
   soundEnabled: boolean;
@@ -161,6 +167,19 @@ export const useGameStore = create<GameStore>()(
           customPresets: s.customPresets.filter((p) => p.id !== id),
         })),
 
+      customLessons: [],
+      saveCustomLesson: (lesson) =>
+        set((s) => ({
+          customLessons: [
+            ...s.customLessons.filter((l) => l.id !== lesson.id),
+            lesson,
+          ],
+        })),
+      deleteCustomLesson: (id) =>
+        set((s) => ({
+          customLessons: s.customLessons.filter((l) => l.id !== id),
+        })),
+
       soundEnabled: true,
       toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
     }),
@@ -171,6 +190,7 @@ export const useGameStore = create<GameStore>()(
         soundEnabled: state.soundEnabled,
         wingerBounds: state.wingerBounds,
         customPresets: state.customPresets,
+        customLessons: state.customLessons,
       }),
     }
   )

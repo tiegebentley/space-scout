@@ -3,11 +3,14 @@ import { use } from "react";
 import Link from "next/link";
 import { LessonPlayer } from "@/components/lessons/LessonPlayer";
 import { getLesson } from "@/data/lessons";
+import { useGameStore } from "@/stores/gameStore";
 
 // Next 16: params is a Promise. In a client component we unwrap it with use().
 export default function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = use(params);
-  const lesson = getLesson(lessonId);
+  const customLessons = useGameStore((s) => s.customLessons) ?? [];
+  // Static (built-in) lessons first, then user-authored ones from the store.
+  const lesson = getLesson(lessonId) ?? customLessons.find((l) => l.id === lessonId);
 
   if (!lesson) {
     return (
