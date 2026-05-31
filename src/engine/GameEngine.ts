@@ -398,21 +398,28 @@ export class GameEngine {
     this.applyStartPositions();
   }
 
-  // Move the players the author explicitly placed to their authored spawn spots.
-  // Keyed "us:<role>" / "them:<role>". No half-clamp: authored intent wins.
-  private applyStartPositions() {
+  // The authored start spot for a player (engine px), or null if none. Keyed
+  // "us:<role>" / "them:<role>" (role incl. "gk"). No half-clamp — authored
+  // intent wins. This is the single source of truth for overrides, used by both
+  // initial spawn (applyStartPositions) and per-restart repositioning.
+  private startPosFor(p: Player): Position | null {
     const sp = this.config.scenarioSetup?.startPositions;
-    if (!sp) return;
+    if (!sp) return null;
+    const pos = sp[`${p.side}:${p.gk ? "gk" : p.role}`];
+    if (!pos) return null;
+    const h = this.homeXY(p.side, { fx: pos.fx, fy: pos.fy });
+    return { x: clamp(h.x, L, R), y: clamp(h.y, TOP, BOT) };
+  }
+
+  // Move the players the author explicitly placed to their authored spawn spots.
+  private applyStartPositions() {
+    if (!this.config.scenarioSetup?.startPositions) return;
     const all = [this.you, ...this.mates, this.gkUs, ...this.opps, this.gkThem];
     for (const p of all) {
       if (!p) continue;
-      const key = `${p.side}:${p.gk ? "gk" : p.role}`;
-      const pos = sp[key];
+      const pos = this.startPosFor(p);
       if (!pos) continue;
-      const h = this.homeXY(p.side, { fx: pos.fx, fy: pos.fy });
-      p.x = clamp(h.x, L, R);
-      p.y = clamp(h.y, TOP, BOT);
-      p.px = p.x; p.py = p.y;
+      p.x = pos.x; p.y = pos.y; p.px = p.x; p.py = p.y;
     }
   }
 
@@ -726,6 +733,12 @@ export class GameEngine {
 
     for (const p of team) {
       if (p.gk || p === r.taker || p === this.you) continue;
+
+      // Authored start position wins over the restart-type repositioning below,
+      // so a player you placed (e.g. the #10 pushed up to press) stays put on
+      // every restart/rep instead of being dragged back to its formation spot.
+      const authored = this.startPosFor(p);
+      if (authored) { p.x = authored.x; p.y = authored.y; continue; }
 
       if (r.type === "goalkick") {
         // On goalkicks: spread wide and find space to play out from the back
