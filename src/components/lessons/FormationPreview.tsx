@@ -47,17 +47,20 @@ const ruleScreenRect = (xMin: number, xMax: number, yMin: number, yMax: number) 
 };
 
 // The restart point + objective zone are consumed by the ENGINE in its own
-// coords (ENGINE_W×ENGINE_H = 900×650), but the board renders in LAB coords
-// (1000×620). These convert between the two so what you place in the editor is
-// where it actually happens in the live game (previously they were conflated,
-// so a side-touchline restart landed in the wrong spot and got clamped).
+// coords (ENGINE_W×ENGINE_H = 900×650), but the board works in LAB coords
+// (1000×620). CRUCIALLY the two assign X/Y to OPPOSITE physical axes:
+//   • lab:    X = depth (own→opp goal, 0..PW),   Y = flank (touchline→touchline)
+//   • engine: X = flank (left→right, 0..ENGINE_W), Y = depth (own→opp goal)
+// (see spotToScreen above: labX = depth*1000, labY = flank*620; and the engine's
+// homeXY: x from flank, y = depthToY(depth)). So the conversion must SWAP axes —
+// not doing so put a left-touchline-at-halfway marker up at the opposition goal.
 const labToEngine = (lx: number, ly: number) => ({
-  x: (lx / PW) * ENGINE_W,
-  y: (ly / PH) * ENGINE_H,
+  x: (ly / PH) * ENGINE_W, // engine flank-X  ← lab flank-Y
+  y: (lx / PW) * ENGINE_H, // engine depth-Y  ← lab depth-X
 });
 const engineToLab = (ex: number, ey: number) => ({
-  x: (ex / ENGINE_W) * PW,
-  y: (ey / ENGINE_H) * PH,
+  x: (ey / ENGINE_H) * PW, // lab depth-X  ← engine depth-Y
+  y: (ex / ENGINE_W) * PH, // lab flank-Y  ← engine flank-X
 });
 // Engine point → board screen coords (for drawing the saved marker/zone).
 const engineToScreen = (ex: number, ey: number) => {
@@ -204,12 +207,14 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
             });
           } else if (onDrawZone) {
             // rect is in lab coords; the engine consumes the zone in engine
-            // coords, so convert the corner + size before saving.
-            const tl = labToEngine(rect.x, rect.y);
-            const br = labToEngine(rect.x + rect.w, rect.y + rect.h);
+            // coords. labToEngine SWAPS axes, so normalize the two converted
+            // corners into a positive-size engine rect.
+            const a = labToEngine(rect.x, rect.y);
+            const b = labToEngine(rect.x + rect.w, rect.y + rect.h);
+            const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
             onDrawZone({
-              x: Math.round(tl.x), y: Math.round(tl.y),
-              w: Math.round(br.x - tl.x), h: Math.round(br.y - tl.y),
+              x: Math.round(x), y: Math.round(y),
+              w: Math.round(Math.abs(b.x - a.x)), h: Math.round(Math.abs(b.y - a.y)),
             });
           }
         }
