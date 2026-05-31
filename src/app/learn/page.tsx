@@ -4,7 +4,7 @@
 // Lessons" section with Edit/Delete. Course cards show completion progress.
 import Link from "next/link";
 import { clsx } from "clsx";
-import { COURSES, LESSONS } from "@/data/lessons";
+import { COURSES, LESSONS, isEditOfBuiltin } from "@/data/lessons";
 import { useGameStore } from "@/stores/gameStore";
 
 const LEVEL_BADGE: Record<string, string> = {
@@ -17,6 +17,9 @@ export default function LearnPage() {
   const completed = useGameStore((s) => s.progress.completedLessons) ?? [];
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
   const deleteCustomLesson = useGameStore((s) => s.deleteCustomLesson);
+  // Edits of built-in lessons show inside their course (as the active version),
+  // so don't also list them here — only show genuinely standalone custom lessons.
+  const ownLessons = customLessons.filter((l) => !isEditOfBuiltin(l.id));
 
   return (
     <main className="flex-1 flex flex-col items-center p-4">
@@ -58,14 +61,14 @@ export default function LearnPage() {
         </div>
 
         {/* Your custom lessons */}
-        {customLessons.length > 0 && (
+        {ownLessons.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">✏️</span>
               <h2 className="font-[Fredoka] font-semibold text-xl text-[#16241c]">Your Lessons</h2>
             </div>
             <div className="flex flex-col gap-2">
-              {customLessons.map((l) => (
+              {ownLessons.map((l) => (
                 <div key={l.id} className="flex items-center gap-2 rounded-xl bg-white border border-[rgba(20,60,35,.1)] shadow-sm px-4 py-3">
                   <Link href={`/learn/${l.id}`} className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-[#16241c] truncate">{l.title}</p>

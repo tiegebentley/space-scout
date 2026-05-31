@@ -2,15 +2,15 @@
 import { use } from "react";
 import Link from "next/link";
 import { LessonPlayer } from "@/components/lessons/LessonPlayer";
-import { getLesson } from "@/data/lessons";
+import { resolveLesson } from "@/data/lessons";
 import { useGameStore } from "@/stores/gameStore";
 
 // Next 16: params is a Promise. In a client component we unwrap it with use().
 export default function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = use(params);
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
-  // Static (built-in) lessons first, then user-authored ones from the store.
-  const lesson = getLesson(lessonId) ?? customLessons.find((l) => l.id === lessonId);
+  // Active version: a saved in-app edit of a built-in wins over the shipped one.
+  const lesson = resolveLesson(lessonId, customLessons);
 
   if (!lesson) {
     return (

@@ -524,7 +524,7 @@ function AuthorEditor() {
       wasUpdate
         ? `Updated "${lesson.title}"`
         : forkedFromBuiltin
-          ? `Saved your copy of "${lesson.title}" — reopens here, and lives under Your Lessons`
+          ? `Saved — "${lesson.title}" now plays your version in the course`
           : `Saved "${lesson.title}" — find it under Your Lessons on the Learn page`
     );
   };
@@ -684,12 +684,10 @@ function AuthorEditor() {
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Lesson title"
           className="w-full rounded-xl border-2 border-[rgba(20,60,35,.12)] px-3 py-2 font-[Fredoka] font-bold text-lg mb-3" />
 
-        {/* Fork notice — editing a built-in saves to YOUR copy, not the original. */}
+        {/* Editing a course lesson — your saved version becomes the active one. */}
         {forkedFromBuiltin && (
-          <div className="rounded-xl bg-[#fff8e6] border border-[#f0c860] px-3 py-2 mb-3 text-[12px] font-semibold text-[#7a5a00]">
-            {editingOwnId
-              ? <>Editing <b>your copy</b> of a built-in lesson. <b>Update lesson</b> saves your changes here — find it under <b>Your Lessons</b> on the Learn page. The original built-in stays unchanged.</>
-              : <>You're editing a <b>built-in</b> lesson. Built-ins can't be overwritten — <b>Save my copy</b> makes your own editable version (it reopens here next time and lives under <b>Your Lessons</b>).</>}
+          <div className="rounded-xl bg-[#eef4ff] border border-[#9cc0f5] px-3 py-2 mb-3 text-[12px] font-semibold text-[#274b86]">
+            Editing this course lesson. <b>{editingOwnId ? "Update lesson" : "Save"}</b> saves your changes and they become the version played in the course. (The original ships with the app, so you can always reset.)
           </div>
         )}
 
@@ -1043,7 +1041,7 @@ function AuthorEditor() {
                 disabled={scenarios.length <= 1}
                 className="rounded-xl bg-white border-2 border-[#E0463B] text-[#E0463B] font-extrabold text-sm py-2.5 cursor-pointer disabled:opacity-35 disabled:cursor-default"
               >🗑 Delete Step</button>
-              <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer col-span-2">💾 {editingOwnId ? "Update lesson" : forkedFromBuiltin ? "Save my copy" : "Save lesson"}</button>
+              <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer col-span-2">💾 {editingOwnId ? "Update lesson" : "Save lesson"}</button>
               <button onClick={onExport} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Export JSON</button>
               <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Import JSON</button>
               <input ref={fileRef} type="file" accept="application/json" onChange={onImport} className="hidden" />

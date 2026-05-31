@@ -19,6 +19,33 @@ export function getLesson(id: string): Lesson | undefined {
   return LESSONS[id];
 }
 
+// Stable id of the saved in-app edit of a built-in lesson. The author saves
+// edits of a built-in under this id (see app/author), so it's the single link
+// between a shipped lesson and the user's edited version of it.
+export function editedIdFor(builtinId: string): string {
+  return `custom-of-${builtinId}`;
+}
+
+// Resolve the ACTIVE version of a lesson id, given the user's saved lessons:
+//   • built-in WITH a saved edit  → the saved edit (your edits win everywhere)
+//   • built-in with no edit       → the shipped built-in
+//   • a custom lesson id          → that custom lesson
+// This is what the course view + player should render so in-app edits replace
+// what the course shows. getLesson() stays pristine for "revert to original".
+export function resolveLesson(id: string, customLessons: Lesson[]): Lesson | undefined {
+  const builtin = getLesson(id);
+  if (builtin) {
+    return customLessons.find((l) => l.id === editedIdFor(id)) ?? builtin;
+  }
+  return customLessons.find((l) => l.id === id);
+}
+
+// True when this id is a saved edit of a built-in (so the Learn page can avoid
+// double-listing it under "Your Lessons" — it already shows inside its course).
+export function isEditOfBuiltin(id: string): boolean {
+  return id.startsWith("custom-of-");
+}
+
 export const COURSES: Course[] = [
   {
     id: "5v5-pilot",
