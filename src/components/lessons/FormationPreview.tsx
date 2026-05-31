@@ -8,13 +8,43 @@
 // lab coords for rendering (engine 900×650 ≈ lab 1000×620 — same convention the
 // zone-rule overlay already uses).
 import { useRef, useState } from "react";
-import { FORMATIONS, JERSEY_NUMBERS, L, R, TOP, BOT } from "@/engine/constants";
+import { FORMATIONS, JERSEY_NUMBERS } from "@/engine/constants";
 import type { ZoneRule, EngineRect } from "@/types/game";
+import { LAB_PITCH } from "@/types/lessons";
 import { labToScreen, screenToLab, VIEW_W, VIEW_H } from "./boardTransform";
 import { BoardGoals } from "./BoardGoals";
 
 const HOME = "#2E6FE0";
 const AWAY = "#E0463B";
+
+// ── Zone-rule box ↔ screen mapping ──────────────────────────────────────────
+// A ZoneRule's fractions follow the ENGINE convention (see engine/renderer.ts
+// drawRuleBoxes + GameEngine.clampToZoneRules + data/zonePresets.ts):
+//   • yMin/yMax = DEPTH   (0 = own goal, 1 = opponent goal)   → the attacking axis
+//   • xMin/xMax = FLANK   (0 = left touchline, 1 = right)     → the sideways axis
+// This editor is the live pitch rotated to portrait with "us" attacking UP, so:
+//   depth → lab X (0..PW) → screen vertical   (labToScreen maps labX → sy)
+//   flank → lab Y (0..PH) → screen horizontal (labToScreen maps labY → sx)
+// Two prior bugs lived here: (1) depth/flank were SWAPPED (boxes rendered on the
+// wrong axis vs the live game), and (2) fractions were mapped over the engine's
+// inset L/R/TOP/BOT pixel bounds, making each goal's final ~12% of the pitch
+// unreachable when drawing/dragging. Both are fixed by mapping over the full
+// lab pitch on the correct axis — exactly how the player dots (spotToScreen) map.
+const PW = LAB_PITCH.w; // 1000 — depth axis length
+const PH = LAB_PITCH.h; // 620  — flank axis length
+// "us" attacks UP: depth 0 (own goal) sits at the BOTTOM (labX 0 → sy=PW), depth
+// 1 (opp goal) at the TOP (labX PW → sy=0). So depth fraction d → labX = d*PW.
+const depthToLabX = (d: number) => d * PW;
+const flankToLabY = (f: number) => f * PH;
+// Screen rect (sx,sy,w,h in viewBox units) for a rule's fractional bounds.
+const ruleScreenRect = (xMin: number, xMax: number, yMin: number, yMax: number) => {
+  const c1 = labToScreen(depthToLabX(yMin), flankToLabY(xMin));
+  const c2 = labToScreen(depthToLabX(yMax), flankToLabY(xMax));
+  return {
+    sx: Math.min(c1.sx, c2.sx), sy: Math.min(c1.sy, c2.sy),
+    w: Math.abs(c2.sx - c1.sx), h: Math.abs(c2.sy - c1.sy),
+  };
+};
 
 function spotToScreen(fx: number, fy: number, side: "us" | "them") {
   const labX = (side === "us" ? fy : 1 - fy) * 1000;
@@ -70,10 +100,13 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
     return { x: Math.round(x), y: Math.round(y) };
   };
 
-  // Screen pointer → fractional pitch coords (0..1) for zone rules.
+  // Screen pointer → fractional zone-rule bounds (0..1). e.x is the lab DEPTH
+  // axis (→ yMin/yMax), e.y the lab FLANK axis (→ xMin/xMax). Mapped over the
+  // full lab pitch so a box reaches either goal line.
+  //   fx = flank fraction (xMin/xMax), fy = depth fraction (yMin/yMax)
   const toFraction = (cx: number, cy: number) => {
     const e = toEngine(cx, cy);
-    return { fx: (e.x - L) / (R - L), fy: (e.y - TOP) / (BOT - TOP) };
+    return { fx: e.y / PH, fy: e.x / PW };
   };
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
@@ -100,9 +133,8 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
     // Resize: pin the SCREEN corner diagonally opposite the handle, and let the
     // pointer drive the dragged corner — robust to the board's rotation. Both
     // screen corners are converted back to fractions and normalized.
-    const c1 = labToScreen(L + (R - L) * orig.xMin, TOP + (BOT - TOP) * orig.yMin);
-    const c2 = labToScreen(L + (R - L) * orig.xMax, TOP + (BOT - TOP) * orig.yMax);
-    const anchorScreen = { sx: Math.min(c1.sx, c2.sx), sy: Math.min(c1.sy, c2.sy) }; // screen NW (fixed)
+    const rs = ruleScreenRect(orig.xMin, orig.xMax, orig.yMin, orig.yMax);
+    const anchorScreen = { sx: rs.sx, sy: rs.sy }; // screen NW (fixed)
     const move = (ev: PointerEvent) => {
       const a = toFraction(anchorScreenToClient(anchorScreen).x, anchorScreenToClient(anchorScreen).y);
       const p = toFraction(ev.clientX, ev.clientY);
@@ -142,9 +174,10 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
         setPreview(null);
         if (rect.w > 30 && rect.h > 30) {
           if (ruleId && onDrawRule) {
-            // engine/lab coords → fractional 0..1 against L..R / TOP..BOT.
-            const xMin = (rect.x - L) / (R - L), xMax = (rect.x + rect.w - L) / (R - L);
-            const yMin = (rect.y - TOP) / (BOT - TOP), yMax = (rect.y + rect.h - TOP) / (BOT - TOP);
+            // toEngine's x is the DEPTH axis (→ yMin/yMax), y the FLANK axis
+            // (→ xMin/xMax). Map each over the full pitch (0..PW depth, 0..PH flank).
+            const yMin = rect.x / PW, yMax = (rect.x + rect.w) / PW;
+            const xMin = rect.y / PH, xMax = (rect.y + rect.h) / PH;
             onDrawRule(ruleId, {
               xMin: Math.max(0, Math.min(1, xMin)), xMax: Math.max(0, Math.min(1, xMax)),
               yMin: Math.max(0, Math.min(1, yMin)), yMax: Math.max(0, Math.min(1, yMax)),
@@ -183,10 +216,7 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
           delete. The selected rule shows its handles. Interactive only when the
           edit callbacks are provided (i.e. in the author). */}
       {(zoneRules || []).map((z) => {
-        const c1 = labToScreen(L + (R - L) * z.xMin, TOP + (BOT - TOP) * z.yMin);
-        const c2 = labToScreen(L + (R - L) * z.xMax, TOP + (BOT - TOP) * z.yMax);
-        const x = Math.min(c1.sx, c2.sx), y = Math.min(c1.sy, c2.sy);
-        const w = Math.abs(c2.sx - c1.sx), h = Math.abs(c2.sy - c1.sy);
+        const { sx: x, sy: y, w, h } = ruleScreenRect(z.xMin, z.xMax, z.yMin, z.yMax);
         const blue = z.team === "us";
         const sel = z.id === selectedRuleId;
         const interactive = !!onUpdateRule;
