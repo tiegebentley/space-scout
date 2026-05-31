@@ -8,7 +8,7 @@
 // lab coords for rendering (engine 900×650 ≈ lab 1000×620 — same convention the
 // zone-rule overlay already uses).
 import { useRef, useState } from "react";
-import { FORMATIONS, JERSEY_NUMBERS } from "@/engine/constants";
+import { FORMATIONS, JERSEY_NUMBERS, W as ENGINE_W, H as ENGINE_H } from "@/engine/constants";
 import type { ZoneRule, EngineRect } from "@/types/game";
 import { LAB_PITCH } from "@/types/lessons";
 import { labToScreen, screenToLab, VIEW_W, VIEW_H } from "./boardTransform";
@@ -44,6 +44,25 @@ const ruleScreenRect = (xMin: number, xMax: number, yMin: number, yMax: number) 
     sx: Math.min(c1.sx, c2.sx), sy: Math.min(c1.sy, c2.sy),
     w: Math.abs(c2.sx - c1.sx), h: Math.abs(c2.sy - c1.sy),
   };
+};
+
+// The restart point + objective zone are consumed by the ENGINE in its own
+// coords (ENGINE_W×ENGINE_H = 900×650), but the board renders in LAB coords
+// (1000×620). These convert between the two so what you place in the editor is
+// where it actually happens in the live game (previously they were conflated,
+// so a side-touchline restart landed in the wrong spot and got clamped).
+const labToEngine = (lx: number, ly: number) => ({
+  x: (lx / PW) * ENGINE_W,
+  y: (ly / PH) * ENGINE_H,
+});
+const engineToLab = (ex: number, ey: number) => ({
+  x: (ex / ENGINE_W) * PW,
+  y: (ey / ENGINE_H) * PH,
+});
+// Engine point → board screen coords (for drawing the saved marker/zone).
+const engineToScreen = (ex: number, ey: number) => {
+  const l = engineToLab(ex, ey);
+  return labToScreen(l.x, l.y);
 };
 
 function spotToScreen(fx: number, fy: number, side: "us" | "them") {
@@ -160,8 +179,9 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (placeMode === "restart" && onPlaceRestart) {
-      const p = toEngine(e.clientX, e.clientY);
-      onPlaceRestart(p.x, p.y);
+      const lab = toEngine(e.clientX, e.clientY); // (lab coords, despite the name)
+      const eng = labToEngine(lab.x, lab.y);      // store in engine coords
+      onPlaceRestart(Math.round(eng.x), Math.round(eng.y));
     } else if ((placeMode === "zone" && onDrawZone) || (ruleId && onDrawRule)) {
       const start = toEngine(e.clientX, e.clientY);
       const move = (ev: PointerEvent) => {
@@ -182,7 +202,16 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
               xMin: Math.max(0, Math.min(1, xMin)), xMax: Math.max(0, Math.min(1, xMax)),
               yMin: Math.max(0, Math.min(1, yMin)), yMax: Math.max(0, Math.min(1, yMax)),
             });
-          } else if (onDrawZone) onDrawZone(rect);
+          } else if (onDrawZone) {
+            // rect is in lab coords; the engine consumes the zone in engine
+            // coords, so convert the corner + size before saving.
+            const tl = labToEngine(rect.x, rect.y);
+            const br = labToEngine(rect.x + rect.w, rect.y + rect.h);
+            onDrawZone({
+              x: Math.round(tl.x), y: Math.round(tl.y),
+              w: Math.round(br.x - tl.x), h: Math.round(br.y - tl.y),
+            });
+          }
         }
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
@@ -192,8 +221,13 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
     }
   };
 
-  // Engine-rect → screen rect (rotated).
+  // Engine-coord rect (the SAVED objective zone) → screen rect (rotated).
   const engRect = (z: EngineRect) => {
+    const c1 = engineToScreen(z.x, z.y), c2 = engineToScreen(z.x + z.w, z.y + z.h);
+    return { x: Math.min(c1.sx, c2.sx), y: Math.min(c1.sy, c2.sy), w: Math.abs(c2.sx - c1.sx), h: Math.abs(c2.sy - c1.sy) };
+  };
+  // Lab-coord rect (the in-progress drag PREVIEW) → screen rect (rotated).
+  const labRect = (z: EngineRect) => {
     const c1 = labToScreen(z.x, z.y), c2 = labToScreen(z.x + z.w, z.y + z.h);
     return { x: Math.min(c1.sx, c2.sx), y: Math.min(c1.sy, c2.sy), w: Math.abs(c2.sx - c1.sx), h: Math.abs(c2.sy - c1.sy) };
   };
@@ -245,7 +279,7 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
 
       {/* Objective zone (receive-in-zone) */}
       {objectiveZone && (() => { const r = engRect(objectiveZone); return <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="rgba(255,209,102,.20)" stroke="#FFD166" strokeWidth={3} strokeDasharray="10 8" rx={10} pointerEvents="none" />; })()}
-      {preview && (() => { const r = engRect(preview); return <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="rgba(255,209,102,.30)" stroke="#FFD166" strokeWidth={4} strokeDasharray="8 6" rx={8} pointerEvents="none" />; })()}
+      {preview && (() => { const r = labRect(preview); return <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="rgba(255,209,102,.30)" stroke="#FFD166" strokeWidth={4} strokeDasharray="8 6" rx={8} pointerEvents="none" />; })()}
 
       {tokens.map((t, i) => (
         <g key={i}>
@@ -255,7 +289,7 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
       ))}
 
       {/* Restart point marker */}
-      {restartPoint && (() => { const s = labToScreen(restartPoint.x, restartPoint.y); return (
+      {restartPoint && (() => { const s = engineToScreen(restartPoint.x, restartPoint.y); return (
         <g pointerEvents="none">
           <circle cx={s.sx} cy={s.sy} r={13} fill="#FFD166" stroke="#16241c" strokeWidth={2} />
           <text x={s.sx} y={s.sy + 4} textAnchor="middle" fontSize={12} fontWeight={900} fill="#16241c">⚽</text>

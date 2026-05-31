@@ -565,10 +565,11 @@ export class GameEngine {
     const setup = this.config.scenarioSetup;
     if (setup?.forcedRestart) {
       const team = setup.restartTeam ?? "us";
-      // Seed at the fixed point if given, else a sensible touchline default; the
-      // forced-restart logic in setRestart will normalize type/team/point.
-      const x = setup.restartX ?? W / 2;
-      const y = setup.restartY ?? (team === "us" ? BOT - 8 : TOP + 8);
+      // Seed at the fixed point if given, else a sensible default. For a throw-in
+      // with no authored point, default to the LEFT sideline at mid-depth in our
+      // build-up half. setRestart() normalizes type/team/point + sideline snap.
+      const x = setup.restartX ?? (setup.forcedRestart === "throwin" ? L + 18 : W / 2);
+      const y = setup.restartY ?? (team === "us" ? H * 0.62 : H * 0.38);
       this.setRestart({ type: setup.forcedRestart, team, x, y });
     } else {
       this.setRestart({ type: "kickoff", team: "us", x: W / 2, y: H / 2 });
@@ -599,11 +600,18 @@ export class GameEngine {
     if (forced && r.type !== "kickoff" && forced !== r.type) {
       r = { ...r, type: forced };
       if (setup?.restartTeam) r.team = setup.restartTeam;
-      if (forced === "throwin") r.y = r.y < H / 2 ? TOP + 8 : BOT - 8;
+      // A throw-in is taken from a SIDELINE (left/right edge, engine X), not a
+      // goal line. Snap X to the nearer touchline; keep the depth (Y).
+      if (forced === "throwin") r.x = r.x < W / 2 ? L + 18 : R - 18;
     }
     // Fixed restart point (Scenario authoring): take it from here every time.
     if (forced && setup?.restartX != null && setup?.restartY != null && r.type !== "kickoff") {
-      r = { ...r, x: clamp(setup.restartX, L, R), y: clamp(setup.restartY, TOP, BOT) };
+      let fx = clamp(setup.restartX, L, R);
+      const fy = clamp(setup.restartY, TOP, BOT);
+      // Keep throw-ins on a real sideline even when a point is set — snap the
+      // authored X to whichever touchline it's nearer, so it reads as a throw-in.
+      if (forced === "throwin") fx = setup.restartX < W / 2 ? L + 18 : R - 18;
+      r = { ...r, x: fx, y: fy };
     }
     this.gstate = "dead";
     this.restart = r;
