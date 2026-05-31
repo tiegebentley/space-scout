@@ -60,6 +60,7 @@ interface DraftScenario {
   restartTeam: "us" | "them";   // which team starts in possession of the restart
   repSeconds: number;            // 0 = single run; >0 = auto-reset every N seconds
   restartDelaySec: number;       // "get set" pause before the ball is taken
+  startTrigger: "timer" | "enter-zone"; // what ends the pause: timer vs. you entering the zone
   objType: ObjType;
   objTarget: number;
   objToRole: string;         // passCount: pass-to role; receiveInZone: receiver
@@ -82,7 +83,7 @@ function blankScenario(kind: StepKind = "instructional"): DraftScenario {
     liveTitle: kind === "game" ? "Now play a game" : "Try it live",
     liveBody: "", format: "5v5", userRole: "hold",
     oppTacticId: "possession", duration: 180000, aiDifficulty: "medium",
-    forcedRestart: "", restartTeam: "us", repSeconds: 0, restartDelaySec: 5,
+    forcedRestart: "", restartTeam: "us", repSeconds: 0, restartDelaySec: 5, startTrigger: "timer",
     objType: "passCount", objTarget: 5, objToRole: "gk",
     objZone: null, restartPoint: null, zoneRules: [],
   };
@@ -150,12 +151,15 @@ function draftToStep(d: DraftScenario): LessonStep {
       // restart type is forced. The get-set pause (restartDelaySec) and rep timer
       // apply to normal restarts too, so a step can carry its own delay with no
       // forced restart. restartTeam is only meaningful alongside a forced restart.
-      scenarioSetup: (d.forcedRestart || d.repSeconds > 0 || d.restartDelaySec > 0)
+      scenarioSetup: (d.forcedRestart || d.repSeconds > 0 || d.restartDelaySec > 0 || d.startTrigger === "enter-zone")
         ? {
             ...(d.forcedRestart ? { forcedRestart: d.forcedRestart, restartTeam: d.restartTeam } : {}),
             ...(d.forcedRestart && d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}),
             ...(d.repSeconds > 0 ? { repSeconds: d.repSeconds } : {}),
             ...(d.restartDelaySec > 0 ? { restartDelaySec: d.restartDelaySec } : {}),
+            // Only persist a non-default trigger, and only when there's a zone to
+            // watch — "enter-zone" needs a receiveInZone objective.
+            ...(d.startTrigger === "enter-zone" && d.objType === "receiveInZone" ? { startTrigger: "enter-zone" as const } : {}),
           }
         : undefined,
     };
@@ -213,6 +217,7 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.restartTeam = st.scenarioSetup?.restartTeam ?? "us";
       d.repSeconds = st.scenarioSetup?.repSeconds ?? 0;
       d.restartDelaySec = st.scenarioSetup?.restartDelaySec ?? 5;
+      d.startTrigger = st.scenarioSetup?.startTrigger ?? "timer";
       d.objType = st.objective.type;
       d.objTarget = st.objective.type === "keepPossession" ? st.objective.seconds
         : st.objective.type === "winBack" ? st.objective.withinSeconds
@@ -833,13 +838,29 @@ function AuthorEditor() {
                       position. Applies to ANY restart (not just forced ones), so
                       it lives outside the forcedRestart gate: every scenario step
                       can set its own per-step delay. */}
-                  <label className="flex items-center gap-1 text-[11px] font-bold text-[#5d6f63]">
-                    Get-set pause
-                    <input type="number" min={0} max={30} value={cur.restartDelaySec}
-                      onChange={(e) => patch({ restartDelaySec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
-                      className="mx-1 w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
-                    sec before the ball is taken (move into position)
-                  </label>
+                  {/* How the get-set pause ENDS: run out the timer, or wait until
+                      the player steps into the receive zone. "enter-zone" needs a
+                      receiveInZone objective (a zone to watch). */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] font-extrabold tracking-wide text-[#5d6f63]">START THE REP WHEN</span>
+                    <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[10px] font-extrabold w-fit">
+                      <button onClick={() => patch({ startTrigger: "timer" })}
+                        className={clsx("px-3 py-1 cursor-pointer", cur.startTrigger === "timer" ? "bg-[#2E6FE0] text-white" : "bg-white text-[#5d6f63]")}>⏱ TIMER</button>
+                      <button onClick={() => patch({ startTrigger: "enter-zone" })}
+                        disabled={cur.objType !== "receiveInZone"}
+                        title={cur.objType !== "receiveInZone" ? "Set the objective to 'Receive in a zone' first" : undefined}
+                        className={clsx("px-3 py-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed", cur.startTrigger === "enter-zone" ? "bg-[#2B8A4E] text-white" : "bg-white text-[#5d6f63]")}>▭ PLAYER ENTERS BOX</button>
+                    </div>
+                    {cur.startTrigger === "enter-zone"
+                      ? <span className="text-[10px] text-[#5d6f63]">Ball is held until the player you control steps into the target zone.</span>
+                      : (<label className="flex items-center gap-1 text-[11px] font-bold text-[#5d6f63]">
+                          Get-set pause
+                          <input type="number" min={0} max={30} value={cur.restartDelaySec}
+                            onChange={(e) => patch({ restartDelaySec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
+                            className="mx-1 w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
+                          sec before the ball is taken (move into position)
+                        </label>)}
+                  </div>
                 </div>
                 <div className={GROUP}>
                   <p className={GLABEL}>OBJECTIVE</p>

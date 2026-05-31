@@ -46,39 +46,79 @@ function drawObjectiveZone(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   const obj = engine.objective;
   if (!obj || obj.type !== "receiveInZone") return;
   const z = obj.zone;
+  const cx = z.x + z.w / 2, cy = z.y + z.h / 2;
 
-  // Gentle 0..1 pulse (~1.3s cycle @ 60fps). Drives both glow strength and the
-  // marching-ants dash offset so the box reads as a live "go here" target.
-  const t = (Math.sin(zonePulse * 0.08) + 1) / 2; // 0..1
-  const glow = 14 + t * 16; // px shadow blur
-  const fillA = 0.10 + t * 0.10;
-  const strokeA = 0.65 + t * 0.35;
+  // 0..1 pulse (~1.3s cycle @ 60fps). Drives glow, fill, and the marching-ants
+  // dash offset so the box reads as a live "go here" target.
+  const t = (Math.sin(zonePulse * 0.08) + 1) / 2;
+
+  // Live feedback: is the player we control standing in the target? When yes the
+  // box flips to a solid "✓ in the zone" green so the cue is unmistakable.
+  const you = engine.you;
+  const inZone = !!you && you.x >= z.x && you.x <= z.x + z.w && you.y >= z.y && you.y <= z.y + z.h;
+
+  // High-contrast amber target (stands out against the green pitch); solid green
+  // once you're inside it.
+  const rgb = inZone ? "43,138,78" : "255,193,7";
+  const ink = inZone ? "16,94,54" : "120,72,0";
 
   ctx.save();
-  ctx.shadowColor = "rgba(43,138,78,.9)";
-  ctx.shadowBlur = glow;
 
-  // Soft fill
-  ctx.fillStyle = `rgba(43,138,78,${fillA})`;
-  roundRect(ctx, z.x, z.y, z.w, z.h, 14);
+  // Glowing pulsing fill
+  ctx.shadowColor = `rgba(${rgb},.95)`;
+  ctx.shadowBlur = 18 + t * 22;
+  ctx.fillStyle = `rgba(${rgb},${(inZone ? 0.28 : 0.16) + t * 0.12})`;
+  roundRect(ctx, z.x, z.y, z.w, z.h, 16);
   ctx.fill();
 
-  // Marching-ants dashed outline
+  // Thick solid border
+  ctx.shadowBlur = 10 + t * 14;
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = `rgba(${rgb},${0.85 + t * 0.15})`;
+  roundRect(ctx, z.x, z.y, z.w, z.h, 16);
+  ctx.stroke();
+
+  // Marching-ants inner dashed line (animated, no glow) for the "active" feel
   ctx.shadowBlur = 0;
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = `rgba(43,138,78,${strokeA})`;
-  ctx.setLineDash([14, 9]);
-  ctx.lineDashOffset = -zonePulse * 0.6;
-  roundRect(ctx, z.x, z.y, z.w, z.h, 14);
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = `rgba(255,255,255,${0.55 + t * 0.35})`;
+  ctx.setLineDash([16, 10]);
+  ctx.lineDashOffset = -zonePulse * 0.8;
+  roundRect(ctx, z.x + 6, z.y + 6, z.w - 12, z.h - 12, 12);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // "Receive here" label centered in the box
-  ctx.fillStyle = `rgba(30,94,54,${0.7 + t * 0.3})`;
-  ctx.font = "700 22px Fredoka, system-ui, sans-serif";
+  // Corner brackets — a target-reticle look that reads instantly as "aim here".
+  const bl = Math.min(26, z.w / 3, z.h / 3); // bracket arm length
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = `rgba(${rgb},1)`;
+  ctx.shadowColor = `rgba(${rgb},.95)`;
+  ctx.shadowBlur = 12;
+  const corner = (x: number, y: number, dx: number, dy: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x, y + dy * bl); ctx.lineTo(x, y); ctx.lineTo(x + dx * bl, y);
+    ctx.stroke();
+  };
+  corner(z.x, z.y, 1, 1);                 // top-left
+  corner(z.x + z.w, z.y, -1, 1);          // top-right
+  corner(z.x, z.y + z.h, 1, -1);          // bottom-left
+  corner(z.x + z.w, z.y + z.h, -1, -1);   // bottom-right
+  ctx.shadowBlur = 0;
+
+  // Label pill centered in the box
+  const label = inZone ? "✓ In the zone" : "Receive here";
+  ctx.font = "800 22px Fredoka, system-ui, sans-serif";
+  const tw = ctx.measureText(label).width;
+  const pillW = tw + 28, pillH = 32;
+  ctx.fillStyle = `rgba(${ink},${0.82 + t * 0.18})`;
+  roundRect(ctx, cx - pillW / 2, cy - pillH / 2, pillW, pillH, pillH / 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("Receive here", z.x + z.w / 2, z.y + z.h / 2);
+  ctx.fillText(label, cx, cy + 1);
+
   ctx.restore();
 }
 

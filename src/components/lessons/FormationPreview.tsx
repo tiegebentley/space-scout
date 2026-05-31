@@ -54,13 +54,21 @@ const ruleScreenRect = (xMin: number, xMax: number, yMin: number, yMax: number) 
 // (see spotToScreen above: labX = depth*1000, labY = flank*620; and the engine's
 // homeXY: x from flank, y = depthToY(depth)). So the conversion must SWAP axes —
 // not doing so put a left-touchline-at-halfway marker up at the opposition goal.
+// The depth axis also FLIPS direction, not just axes. On this board "us" attacks
+// UP: own goal sits at the BOTTOM (labToScreen: sy = PW - labX, so labX 0 → screen
+// bottom). In the engine, depthToY("us", d) = BOT - (BOT-TOP)*d, so OUR own goal
+// is at high y (BOT, the bottom) and the opponent goal at low y (TOP). Mapping
+// labX → engineY linearly (labX 0 → engineY 0) put own-goal content at engineY 0
+// = the TOP = opponent goal — so an author-drawn build-up zone showed up at the
+// far end in play. Invert the depth axis (labX 0 ↔ engineY ENGINE_H) to line the
+// two up. Used for BOTH the objective zone and the restart point.
 const labToEngine = (lx: number, ly: number) => ({
-  x: (ly / PH) * ENGINE_W, // engine flank-X  ← lab flank-Y
-  y: (lx / PW) * ENGINE_H, // engine depth-Y  ← lab depth-X
+  x: (ly / PH) * ENGINE_W,           // engine flank-X  ← lab flank-Y
+  y: (1 - lx / PW) * ENGINE_H,       // engine depth-Y  ← lab depth-X (flipped)
 });
 const engineToLab = (ex: number, ey: number) => ({
-  x: (ey / ENGINE_H) * PW, // lab depth-X  ← engine depth-Y
-  y: (ex / ENGINE_W) * PH, // lab flank-Y  ← engine flank-X
+  x: (1 - ey / ENGINE_H) * PW,       // lab depth-X  ← engine depth-Y (flipped)
+  y: (ex / ENGINE_W) * PH,           // lab flank-Y  ← engine flank-X
 });
 // Engine point → board screen coords (for drawing the saved marker/zone).
 const engineToScreen = (ex: number, ey: number) => {

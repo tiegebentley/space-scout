@@ -65,6 +65,9 @@ export class GameEngine {
   PACE = 0.17;
 
   private deadTimer = 0;
+  // When true, a dead ball won't be taken until you step into the objective zone
+  // (the "enter-zone" start trigger). Set in setRestart, cleared once you enter.
+  private waitingForZoneStart = false;
   private restart: Restart | null = null;
   private firstKickoff = true;
   private countdownPhase: "3" | "2" | "1" | "GO" | null = null;
@@ -441,6 +444,15 @@ export class GameEngine {
   // canvas highlight a receiveInZone target box so the player can see where to
   // show for the ball.
   get objective(): MatchConfig["objective"] { return this.config.objective; }
+
+  // Is the player you control standing inside the receiveInZone objective box?
+  // Used by the "enter-zone" start trigger to know when to take the ball.
+  private inObjectiveZone(): boolean {
+    const obj = this.config.objective;
+    if (!obj || obj.type !== "receiveInZone" || !this.you) return false;
+    const z = obj.zone;
+    return this.you.x >= z.x && this.you.x <= z.x + z.w && this.you.y >= z.y && this.you.y <= z.y + z.h;
+  }
   // Public for the renderer: is this rule currently governing its player?
   isZoneRuleActive(rule: ZoneRule): boolean { return this.zoneRuleActive(rule); }
   // Replace the whole rule set live (used when the UI edits/removes rules).
@@ -505,9 +517,18 @@ export class GameEngine {
       this.keyMove();
       this.moveGK(this.gkUs);
       this.moveGK(this.gkThem);
+      // "enter-zone" start: take the ball the moment YOU are inside the receive
+      // zone (after a short grace so it can't fire on frame 0 if you spawn in it),
+      // instead of waiting out the timer. The deadTimer still ticks as a safety
+      // cap below, so a rep where you never enter eventually resumes/resets.
+      if (this.waitingForZoneStart && this.deadTimer < 12 * 60 - 30 && this.inObjectiveZone()) {
+        this.waitingForZoneStart = false;
+        this.deadTimer = 0;
+      }
       if (this.deadTimer > 0) {
         this.deadTimer--;
       } else {
+        this.waitingForZoneStart = false;
         if (this.restart?._pending) {
           this.kickoffKeepScore(this.restart.team);
         } else if (this.restart) {
@@ -627,6 +648,16 @@ export class GameEngine {
     this.deadTimer = delaySec != null && r.type !== "kickoff"
       ? Math.round(delaySec * 60)
       : (r.type === "kickoff" ? 120 : Math.round(70 / this.PACE));
+    // "enter-zone" start trigger: hold the ball until YOU step into the receive
+    // zone, rather than firing on the timer. Only armed for non-kickoff restarts
+    // that have a receiveInZone objective to watch. The deadTimer above still runs
+    // as a SAFETY CAP — but stretched to at least ~12s so you have time to move in
+    // (without it, a short get-set value would reset the rep before you arrive).
+    const wantZoneStart = setup?.startTrigger === "enter-zone"
+      && r.type !== "kickoff"
+      && this.config.objective?.type === "receiveInZone";
+    this.waitingForZoneStart = !!wantZoneStart;
+    if (wantZoneStart) this.deadTimer = Math.max(this.deadTimer, 12 * 60);
     this.youHasBall = false;
     this.ball.flying = false;
     this.ball.owner = null;

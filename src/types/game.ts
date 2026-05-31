@@ -104,6 +104,15 @@ export interface ScenarioSetup {
   // window so the player can move into position first. You can move during it.
   // Omitted = the engine's default throw-in pause.
   restartDelaySec?: number;
+  // What ends the "get set" pause and starts play:
+  //   • "timer"      (default) — the ball is taken when restartDelaySec elapses.
+  //   • "enter-zone"           — the ball is held until the player you control
+  //                              steps into the objective's receive zone, so the
+  //                              rep only starts once you've shown for it. The
+  //                              restartDelaySec then acts as a safety cap (if you
+  //                              never enter, the rep resets so it can't hang).
+  // "enter-zone" requires a receiveInZone objective (it needs a zone to watch).
+  startTrigger?: "timer" | "enter-zone";
 }
 
 export interface MatchConfig {

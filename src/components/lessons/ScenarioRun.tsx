@@ -110,7 +110,9 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
             {repActive && started && !obj.done && (
               isLive
                 ? <span className="text-[11px] font-extrabold text-[#5d6f63] tabular-nums">⏱ {repLeft}s</span>
-                : <span className="text-[11px] font-extrabold text-[#B07E00]">Get set…</span>
+                : <span className="text-[11px] font-extrabold text-[#B07E00]">
+                    {matchConfig.scenarioSetup?.startTrigger === "enter-zone" ? "Move into the box…" : "Get set…"}
+                  </span>
             )}
             <p className="text-sm font-extrabold text-[#2B8A4E]">{obj.progress}/{obj.target}</p>
           </div>
