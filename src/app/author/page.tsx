@@ -636,12 +636,15 @@ function AuthorEditor() {
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Lesson title"
           className="w-full rounded-xl border-2 border-[rgba(20,60,35,.12)] px-3 py-2 font-[Fredoka] font-bold text-lg mb-3" />
 
-        {/* Undo / Redo (whole-lesson history) */}
+        {/* Undo / Redo (whole-lesson history). Stays clearly visible even when
+            disabled (dimmed text, not near-invisible). */}
         <div className="flex items-center gap-2 mb-3">
           <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"
-            className="rounded-lg px-4 py-2 text-sm font-extrabold bg-white border-2 border-[rgba(20,60,35,.18)] text-[#16241c] cursor-pointer hover:bg-[#f3f7f2] active:translate-y-[1px] disabled:opacity-30 disabled:cursor-default transition">↶ Undo</button>
+            className={clsx("rounded-lg px-4 py-2 text-sm font-extrabold bg-white border-2 active:translate-y-[1px] transition",
+              canUndo ? "border-[#2E6FE0] text-[#2E6FE0] cursor-pointer hover:bg-[#eef4ff]" : "border-[rgba(20,60,35,.15)] text-[#9aa79f] cursor-default")}>↶ Undo</button>
           <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"
-            className="rounded-lg px-4 py-2 text-sm font-extrabold bg-white border-2 border-[rgba(20,60,35,.18)] text-[#16241c] cursor-pointer hover:bg-[#f3f7f2] active:translate-y-[1px] disabled:opacity-30 disabled:cursor-default transition">↷ Redo</button>
+            className={clsx("rounded-lg px-4 py-2 text-sm font-extrabold bg-white border-2 active:translate-y-[1px] transition",
+              canRedo ? "border-[#2E6FE0] text-[#2E6FE0] cursor-pointer hover:bg-[#eef4ff]" : "border-[rgba(20,60,35,.15)] text-[#9aa79f] cursor-default")}>↷ Redo</button>
           <span className="text-[10px] font-bold text-[#9aa79f] ml-1">Ctrl+Z / Ctrl+Shift+Z · Del removes selected</span>
         </div>
 
