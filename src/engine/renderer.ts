@@ -23,6 +23,8 @@ export function renderFrame(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   ctx.clearRect(0, 0, W, H);
   drawPitch(ctx, engine.showBuildoutLines);
   if (!engine.you) return;
+  zonePulse++; // advance the receive-zone pulse one step per rendered frame
+  drawObjectiveZone(ctx, engine);
   if (engine.showZoneEditor) drawWingerZones(ctx, engine);
   drawZoneRules(ctx, engine);
   drawPassLane(ctx, engine);
@@ -31,6 +33,64 @@ export function renderFrame(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   drawYou(ctx, engine);
   drawBall(ctx, engine);
   if ((engine as any).countdownPhase) drawCountdown(ctx, (engine as any).countdownPhase);
+}
+
+// Pulse phase for the receive-zone highlight. Advanced once per rendered frame
+// in renderFrame (no Date.now/Math.random — keeps rendering deterministic).
+let zonePulse = 0;
+
+// Highlight the receiveInZone objective's target box so the player can see where
+// to show for the ball. Drawn under the players (called early in renderFrame).
+// Coords are ENGINE coords (W×H), identical to the canvas, so we draw directly.
+function drawObjectiveZone(ctx: CanvasRenderingContext2D, engine: GameEngine) {
+  const obj = engine.objective;
+  if (!obj || obj.type !== "receiveInZone") return;
+  const z = obj.zone;
+
+  // Gentle 0..1 pulse (~1.3s cycle @ 60fps). Drives both glow strength and the
+  // marching-ants dash offset so the box reads as a live "go here" target.
+  const t = (Math.sin(zonePulse * 0.08) + 1) / 2; // 0..1
+  const glow = 14 + t * 16; // px shadow blur
+  const fillA = 0.10 + t * 0.10;
+  const strokeA = 0.65 + t * 0.35;
+
+  ctx.save();
+  ctx.shadowColor = "rgba(43,138,78,.9)";
+  ctx.shadowBlur = glow;
+
+  // Soft fill
+  ctx.fillStyle = `rgba(43,138,78,${fillA})`;
+  roundRect(ctx, z.x, z.y, z.w, z.h, 14);
+  ctx.fill();
+
+  // Marching-ants dashed outline
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = `rgba(43,138,78,${strokeA})`;
+  ctx.setLineDash([14, 9]);
+  ctx.lineDashOffset = -zonePulse * 0.6;
+  roundRect(ctx, z.x, z.y, z.w, z.h, 14);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // "Receive here" label centered in the box
+  ctx.fillStyle = `rgba(30,94,54,${0.7 + t * 0.3})`;
+  ctx.font = "700 22px Fredoka, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Receive here", z.x + z.w / 2, z.y + z.h / 2);
+  ctx.restore();
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
 }
 
 function depthToY(side: "us" | "them", depth: number): number {

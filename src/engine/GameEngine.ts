@@ -437,6 +437,10 @@ export class GameEngine {
   get currentTacticId(): string { return this.config.tacticId || "possession"; }
   get currentOppTacticId(): string { return this.config.oppTacticId || "possession"; }
   get zoneRules(): ZoneRule[] { return this.config.zoneRules || []; }
+  // Public for the renderer: the active scenario objective, if any. Lets the
+  // canvas highlight a receiveInZone target box so the player can see where to
+  // show for the ball.
+  get objective(): MatchConfig["objective"] { return this.config.objective; }
   // Public for the renderer: is this rule currently governing its player?
   isZoneRuleActive(rule: ZoneRule): boolean { return this.zoneRuleActive(rule); }
   // Replace the whole rule set live (used when the UI edits/removes rules).

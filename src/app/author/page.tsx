@@ -146,11 +146,14 @@ function draftToStep(d: DraftScenario): LessonStep {
       body: d.liveBody,
       matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules },
       objective: draftToObjective(d),
-      scenarioSetup: d.forcedRestart
+      // Build a scenarioSetup whenever ANY of its knobs is set — not only when a
+      // restart type is forced. The get-set pause (restartDelaySec) and rep timer
+      // apply to normal restarts too, so a step can carry its own delay with no
+      // forced restart. restartTeam is only meaningful alongside a forced restart.
+      scenarioSetup: (d.forcedRestart || d.repSeconds > 0 || d.restartDelaySec > 0)
         ? {
-            forcedRestart: d.forcedRestart,
-            restartTeam: d.restartTeam,
-            ...(d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}),
+            ...(d.forcedRestart ? { forcedRestart: d.forcedRestart, restartTeam: d.restartTeam } : {}),
+            ...(d.forcedRestart && d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}),
             ...(d.repSeconds > 0 ? { repSeconds: d.repSeconds } : {}),
             ...(d.restartDelaySec > 0 ? { restartDelaySec: d.restartDelaySec } : {}),
           }
@@ -824,16 +827,19 @@ function AuthorEditor() {
                           </label>
                         )}
                       </div>
-                      {/* "Get set" pause before the ball is taken — time to move into position. */}
-                      <label className="flex items-center gap-1 text-[11px] font-bold text-[#5d6f63]">
-                        Get-set pause
-                        <input type="number" min={0} max={30} value={cur.restartDelaySec}
-                          onChange={(e) => patch({ restartDelaySec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
-                          className="mx-1 w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
-                        sec before the ball is taken (move into position)
-                      </label>
                     </>
                   )}
+                  {/* "Get set" pause before the ball is taken — time to move into
+                      position. Applies to ANY restart (not just forced ones), so
+                      it lives outside the forcedRestart gate: every scenario step
+                      can set its own per-step delay. */}
+                  <label className="flex items-center gap-1 text-[11px] font-bold text-[#5d6f63]">
+                    Get-set pause
+                    <input type="number" min={0} max={30} value={cur.restartDelaySec}
+                      onChange={(e) => patch({ restartDelaySec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
+                      className="mx-1 w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
+                    sec before the ball is taken (move into position)
+                  </label>
                 </div>
                 <div className={GROUP}>
                   <p className={GLABEL}>OBJECTIVE</p>
