@@ -22,7 +22,7 @@ import { BUILTIN_PRESETS } from "@/data/zonePresets";
 const roleLabel = (r: string) => `#${JERSEY_NUMBERS[r] ?? "?"} ${ROLE_LABELS[r] ?? r}`;
 const OBJ_ROLES = ["gk", "hold", "lw", "rw", "fwd", "lcm", "rcm"];
 import type { BoardObject, Scenario, Zone, Lesson, Choice, InfoCard, LessonStep, ScenarioObjective } from "@/types/lessons";
-import type { ZoneRule, EngineRect, ZoneCondition, ZoneMovement, ZoneAction, ZoneOffBall } from "@/types/game";
+import type { ZoneRule, EngineRect, ZoneCondition, ZoneMovement, ZoneAction, ZoneOffBall, ScenarioSetup } from "@/types/game";
 
 type Mode = "move" | "choice" | "arrow" | "info";
 // The three lesson modes a step can be.
@@ -67,6 +67,7 @@ interface DraftScenario {
   objZone: EngineRect | null; // receiveInZone target zone (drawn on the field)
   restartPoint: { x: number; y: number } | null; // where the forced restart is taken
   zoneRules: ZoneRule[];     // boundaries / rules for scenario & game steps
+  startPositions: Record<string, { fx: number; fy: number }>; // authored player spawn overrides
 }
 
 let seq = 0;
@@ -85,7 +86,7 @@ function blankScenario(kind: StepKind = "instructional"): DraftScenario {
     oppTacticId: "possession", duration: 180000, aiDifficulty: "medium",
     forcedRestart: "", restartTeam: "us", repSeconds: 0, restartDelaySec: 5, startTrigger: "timer",
     objType: "passCount", objTarget: 5, objToRole: "gk",
-    objZone: null, restartPoint: null, zoneRules: [],
+    objZone: null, restartPoint: null, zoneRules: [], startPositions: {},
   };
 }
 
@@ -151,28 +152,60 @@ function draftToStep(d: DraftScenario): LessonStep {
       // restart type is forced. The get-set pause (restartDelaySec) and rep timer
       // apply to normal restarts too, so a step can carry its own delay with no
       // forced restart. restartTeam is only meaningful alongside a forced restart.
-      scenarioSetup: (d.forcedRestart || d.repSeconds > 0 || d.restartDelaySec > 0 || d.startTrigger === "enter-zone")
-        ? {
-            ...(d.forcedRestart ? { forcedRestart: d.forcedRestart, restartTeam: d.restartTeam } : {}),
-            ...(d.forcedRestart && d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}),
-            ...(d.repSeconds > 0 ? { repSeconds: d.repSeconds } : {}),
-            ...(d.restartDelaySec > 0 ? { restartDelaySec: d.restartDelaySec } : {}),
-            // Only persist a non-default trigger, and only when there's a zone to
-            // watch — "enter-zone" needs a receiveInZone objective.
-            ...(d.startTrigger === "enter-zone" && d.objType === "receiveInZone" ? { startTrigger: "enter-zone" as const } : {}),
-          }
-        : undefined,
+      scenarioSetup: draftToSetup(d),
     };
   }
   if (d.stepKind === "game") {
+    // A game step has no restart/objective knobs, but it CAN carry authored start
+    // positions — nested in matchConfig so launchGame (which only forwards
+    // matchConfig to the engine) preserves them.
+    const sp = Object.keys(d.startPositions).length > 0 ? { startPositions: d.startPositions } : undefined;
     return {
       kind: "play",
       title: d.liveTitle || "Play a game",
       body: d.liveBody,
-      matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules },
+      matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules, ...(sp ? { scenarioSetup: sp } : {}) },
     };
   }
   return { kind: "scenario", scenario: toScenario(d) };
+}
+
+// Build a live-scenario's ScenarioSetup from the draft (forced restart, reps,
+// get-set delay, start trigger, and authored start positions). Returns undefined
+// when nothing is configured so steps stay clean.
+function draftToSetup(d: DraftScenario): ScenarioSetup | undefined {
+  const hasPositions = Object.keys(d.startPositions).length > 0;
+  if (!(d.forcedRestart || d.repSeconds > 0 || d.restartDelaySec > 0 || d.startTrigger === "enter-zone" || hasPositions)) {
+    return undefined;
+  }
+  return {
+    ...(d.forcedRestart ? { forcedRestart: d.forcedRestart, restartTeam: d.restartTeam } : {}),
+    ...(d.forcedRestart && d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}),
+    ...(d.repSeconds > 0 ? { repSeconds: d.repSeconds } : {}),
+    ...(d.restartDelaySec > 0 ? { restartDelaySec: d.restartDelaySec } : {}),
+    // Only persist a non-default trigger, and only when there's a zone to watch.
+    ...(d.startTrigger === "enter-zone" && d.objType === "receiveInZone" ? { startTrigger: "enter-zone" as const } : {}),
+    ...(hasPositions ? { startPositions: d.startPositions } : {}),
+  };
+}
+
+// "Set starting positions" control shared by the scenario + game editors. Toggles
+// drag-to-place on the board and shows how many players were moved off their
+// formation default (with a reset).
+function StartPositionsControl({ positionMode, setPositionMode, count, onReset }: {
+  positionMode: boolean; setPositionMode: (v: boolean) => void; count: number; onReset: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 mt-1">
+      <button onClick={() => setPositionMode(!positionMode)}
+        className={clsx("rounded-lg px-2.5 py-1 text-[11px] font-extrabold cursor-pointer border",
+          positionMode ? "bg-[#2B8A4E] text-white border-[#2B8A4E]"
+          : count > 0 ? "bg-[#2B8A4E14] border-[#2B8A4E55] text-[#1e5e36]" : "bg-white border-[rgba(20,60,35,.15)]")}>
+        {positionMode ? "Drag players on the board…" : count > 0 ? `✓ ${count} player${count > 1 ? "s" : ""} placed` : "👟 Set starting positions"}
+      </button>
+      {count > 0 && <button onClick={onReset} className="text-[11px] font-bold text-[#E0463B] cursor-pointer">reset all</button>}
+    </div>
+  );
 }
 
 // Convert a stored Scenario back into an editable draft (reverse of toScenario).
@@ -227,6 +260,7 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.objZone = st.objective.type === "receiveInZone" ? st.objective.zone : null;
       d.restartPoint = (st.scenarioSetup?.restartX != null && st.scenarioSetup?.restartY != null)
         ? { x: st.scenarioSetup.restartX, y: st.scenarioSetup.restartY } : null;
+      d.startPositions = st.scenarioSetup?.startPositions ?? {};
       drafts.push(d);
     } else if (st.kind === "play") {
       const d = blankScenario("game");
@@ -237,6 +271,8 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.duration = st.matchConfig.duration ?? 180000;
       d.aiDifficulty = st.matchConfig.aiDifficulty ?? "medium";
       d.zoneRules = st.matchConfig.zoneRules ?? [];
+      // Play steps nest start positions in matchConfig.scenarioSetup.
+      d.startPositions = st.matchConfig.scenarioSetup?.startPositions ?? {};
       drafts.push(d);
     }
     // explain steps are skipped (the author models content via scenarios/steps)
@@ -282,8 +318,9 @@ function AuthorEditor() {
   // Interactive placing on the Scenario/Game field preview.
   // "rule:<id>" means drawing the box for that zone rule.
   const [placeMode, setPlaceMode] = useState<"restart" | "zone" | `rule:${string}` | null>(null);
+  const [positionMode, setPositionMode] = useState(false);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
-  useEffect(() => { setPlaceMode(null); setSelectedRuleId(null); }, [idx]); // clear on step switch
+  useEffect(() => { setPlaceMode(null); setPositionMode(false); setSelectedRuleId(null); }, [idx]); // clear on step switch
   const [testLesson, setTestLesson] = useState<Lesson | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -775,6 +812,9 @@ function AuthorEditor() {
                 restartPoint={cur.restartPoint}
                 objectiveZone={cur.objType === "receiveInZone" ? cur.objZone : null}
                 selectedRuleId={selectedRuleId}
+                positionMode={positionMode}
+                startPositions={cur.startPositions}
+                onMovePlayer={(key, pos) => patch({ startPositions: { ...cur.startPositions, [key]: pos } })}
                 onPlaceRestart={(x, y) => { patch({ restartPoint: { x, y } }); setPlaceMode(null); toast("Restart point set"); }}
                 onDrawZone={(rect) => { patch({ objZone: rect }); setPlaceMode(null); toast("Objective zone set"); }}
                 onDrawRule={(id, b) => { updateRule(id, b); setPlaceMode(null); toast("Rule box drawn"); }}
@@ -796,6 +836,8 @@ function AuthorEditor() {
                     value={{ format: cur.format, userRole: cur.userRole, oppTacticId: cur.oppTacticId, duration: cur.duration, aiDifficulty: cur.aiDifficulty }}
                     onChange={(p) => patch(p as Partial<DraftScenario>)}
                   />
+                  <StartPositionsControl positionMode={positionMode} setPositionMode={setPositionMode}
+                    count={Object.keys(cur.startPositions).length} onReset={() => patch({ startPositions: {} })} />
                   <label className="block text-[11px] font-extrabold tracking-wide text-[#5d6f63] mt-1">EVERY RESTART IS A
                     <select value={cur.forcedRestart} onChange={(e) => patch({ forcedRestart: e.target.value as DraftScenario["forcedRestart"] })} className="ml-2 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white">
                       <option value="">(normal)</option><option value="throwin">Throw-in</option><option value="goalkick">Goal kick</option><option value="corner">Corner</option><option value="kickoff">Kick-off</option>
@@ -919,6 +961,8 @@ function AuthorEditor() {
                     value={{ format: cur.format, userRole: cur.userRole, oppTacticId: cur.oppTacticId, duration: cur.duration, aiDifficulty: cur.aiDifficulty }}
                     onChange={(p) => patch(p as Partial<DraftScenario>)}
                   />
+                  <StartPositionsControl positionMode={positionMode} setPositionMode={setPositionMode}
+                    count={Object.keys(cur.startPositions).length} onReset={() => patch({ startPositions: {} })} />
                 </div>
                 {rulesGroup}
               </>

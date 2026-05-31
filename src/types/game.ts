@@ -113,6 +113,12 @@ export interface ScenarioSetup {
   //                              never enter, the rep resets so it can't hang).
   // "enter-zone" requires a receiveInZone objective (it needs a zone to watch).
   startTrigger?: "timer" | "enter-zone";
+  // Authored starting positions, overriding the formation default for the players
+  // you've placed. Keyed "us:<role>" / "them:<role>" (role includes "gk"); value
+  // is fractional spawn coords { fx: flank 0..1, fy: depth 0..1 } in the same
+  // space the engine's formation uses. Undragged players keep their formation
+  // spot. Applied on every kickoff/rep reset so each rep starts identically.
+  startPositions?: Record<string, { fx: number; fy: number }>;
 }
 
 export interface MatchConfig {

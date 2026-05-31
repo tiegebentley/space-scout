@@ -76,6 +76,27 @@ const engineToScreen = (ex: number, ey: number) => {
   return labToScreen(l.x, l.y);
 };
 
+// Engine pixel point → fractional spawn coords { fx: flank, fy: depth }, the
+// inverse of the engine's homeXY (see GameEngine: x = L+(R-L)*fxEff with fxEff
+// flipped for "them"; y = depthToY(side, fy)). Used when the author drags a
+// player so the dropped spot becomes a side-relative formation override.
+const L = 18, R = ENGINE_W - 18, TOP = 18, BOT = ENGINE_H - 18; // mirror engine MARGIN
+const engineToFrac = (side: "us" | "them", ex: number, ey: number) => {
+  const fxEff = (ex - L) / (R - L);
+  const fx = side === "them" ? 1 - fxEff : fxEff;
+  const fy = side === "us" ? (BOT - ey) / (BOT - TOP) : (ey - TOP) / (BOT - TOP);
+  const c = (v: number) => Math.max(0, Math.min(1, v));
+  return { fx: c(fx), fy: c(fy) };
+};
+// Fractional spawn { fx, fy } → board screen coords (forward of engineToFrac via
+// homeXY → engineToScreen), so an overridden player renders where it was placed.
+const fracToScreen = (side: "us" | "them", fx: number, fy: number) => {
+  const fxEff = side === "them" ? 1 - fx : fx;
+  const ex = L + (R - L) * fxEff;
+  const ey = side === "us" ? BOT - (BOT - TOP) * fy : TOP + (BOT - TOP) * fy;
+  return engineToScreen(ex, ey);
+};
+
 function spotToScreen(fx: number, fy: number, side: "us" | "them") {
   const labX = (side === "us" ? fy : 1 - fy) * 1000;
   const labY = fx * 620;
@@ -100,25 +121,53 @@ interface Props {
   onUpdateRule?: (id: string, bounds: RuleBounds) => void;
   onSelectRule?: (id: string) => void;
   onDeleteRule?: (id: string) => void;
+  // Starting-position authoring. When positionMode is on, dragging a player emits
+  // its new side-relative spawn via onMovePlayer (key "us:<role>"/"them:<role>").
+  // startPositions overrides where placed players render.
+  positionMode?: boolean;
+  startPositions?: Record<string, { fx: number; fy: number }>;
+  onMovePlayer?: (key: string, pos: { fx: number; fy: number }) => void;
 }
 
 type RuleBounds = { xMin: number; xMax: number; yMin: number; yMax: number };
 
-export function FormationPreview({ format, userRole, zoneRules, placeMode, restartPoint, objectiveZone, selectedRuleId, onPlaceRestart, onDrawZone, onDrawRule, onUpdateRule, onSelectRule, onDeleteRule }: Props) {
+export function FormationPreview({ format, userRole, zoneRules, placeMode, restartPoint, objectiveZone, selectedRuleId, onPlaceRestart, onDrawZone, onDrawRule, onUpdateRule, onSelectRule, onDeleteRule, positionMode, startPositions, onMovePlayer }: Props) {
   const formation = FORMATIONS[format] || FORMATIONS["5v5"];
   const roles = Object.keys(formation);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [preview, setPreview] = useState<EngineRect | null>(null);
 
-  const tokens: { x: number; y: number; side: "us" | "them"; label: string; you: boolean }[] = [];
+  // Screen spot for a player, honoring an authored override if one exists.
+  const playerScreen = (side: "us" | "them", role: string, defFx: number, defFy: number) => {
+    const o = startPositions?.[`${side}:${role}`];
+    return o ? fracToScreen(side, o.fx, o.fy) : spotToScreen(defFx, defFy, side);
+  };
+
+  const tokens: { x: number; y: number; side: "us" | "them"; role: string; label: string; you: boolean; moved: boolean }[] = [];
   for (const side of ["us", "them"] as const) {
-    tokens.push({ ...gkScreen(side), side, label: "1", you: false });
+    const gk = playerScreen(side, "gk", 0.5, 0); // gk default ≈ on own goal line
+    const gkDef = gkScreen(side);
+    const gkMoved = !!startPositions?.[`${side}:gk`];
+    tokens.push({ x: gkMoved ? gk.sx : gkDef.x, y: gkMoved ? gk.sy : gkDef.y, side, role: "gk", label: "1", you: false, moved: gkMoved });
     for (const r of roles) {
       const cfg = formation[r];
-      const s = spotToScreen(cfg.fx, cfg.fy, side);
-      tokens.push({ x: s.sx, y: s.sy, side, label: String(JERSEY_NUMBERS[r] ?? "?"), you: side === "us" && r === userRole });
+      const s = playerScreen(side, r, cfg.fx, cfg.fy);
+      tokens.push({ x: s.sx, y: s.sy, side, role: r, label: String(JERSEY_NUMBERS[r] ?? "?"), you: side === "us" && r === userRole, moved: !!startPositions?.[`${side}:${r}`] });
     }
   }
+
+  // Drag a player token → emit a side-relative spawn override.
+  const onPlayerDown = (side: "us" | "them", role: string) => (e: React.PointerEvent) => {
+    if (!positionMode || !onMovePlayer) return;
+    e.stopPropagation();
+    const move = (ev: PointerEvent) => {
+      const lab = toEngine(ev.clientX, ev.clientY); // (lab coords despite name)
+      const eng = labToEngine(lab.x, lab.y);
+      onMovePlayer(`${side}:${role}`, engineToFrac(side, eng.x, eng.y));
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
 
   // Screen pointer → engine coords (treated as lab coords here).
   const toEngine = (cx: number, cy: number) => {
@@ -248,7 +297,7 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
   return (
     <svg ref={svgRef} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       onPointerDown={onPointerDown}
-      className={`w-full max-w-[420px] mx-auto block rounded-2xl border-2 shadow-sm ${placeMode ? "border-[#FFD166] cursor-crosshair touch-none select-none" : "border-[rgba(20,60,35,.15)]"}`}>
+      className={`w-full max-w-[420px] mx-auto block rounded-2xl border-2 shadow-sm ${placeMode ? "border-[#FFD166] cursor-crosshair touch-none select-none" : positionMode ? "border-[#2B8A4E] touch-none select-none" : "border-[rgba(20,60,35,.15)]"}`}>
       {Array.from({ length: 10 }).map((_, i) => (
         <rect key={i} x={0} y={(VIEW_H / 10) * i} width={VIEW_W} height={VIEW_H / 10} fill={i % 2 ? "#2F9354" : "#2B8A4E"} />
       ))}
@@ -295,9 +344,11 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
       {preview && (() => { const r = labRect(preview); return <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="rgba(255,209,102,.30)" stroke="#FFD166" strokeWidth={4} strokeDasharray="8 6" rx={8} pointerEvents="none" />; })()}
 
       {tokens.map((t, i) => (
-        <g key={i}>
-          <circle cx={t.x} cy={t.y} r={20} fill={t.side === "us" ? HOME : AWAY} stroke={t.you ? "#FFD166" : "rgba(255,255,255,.85)"} strokeWidth={t.you ? 5 : 2} />
-          <text x={t.x} y={t.y + 6} textAnchor="middle" fontSize={18} fontWeight={800} fill="#fff" style={{ fontFamily: "Fredoka, sans-serif" }}>{t.label}</text>
+        <g key={i} style={positionMode ? { cursor: "grab" } : undefined}
+          onPointerDown={positionMode ? onPlayerDown(t.side, t.role) : undefined}>
+          <circle cx={t.x} cy={t.y} r={20} fill={t.side === "us" ? HOME : AWAY}
+            stroke={t.you ? "#FFD166" : t.moved ? "#16241c" : "rgba(255,255,255,.85)"} strokeWidth={t.you || t.moved ? 5 : 2} />
+          <text x={t.x} y={t.y + 6} textAnchor="middle" fontSize={18} fontWeight={800} fill="#fff" style={{ fontFamily: "Fredoka, sans-serif", pointerEvents: "none" }}>{t.label}</text>
         </g>
       ))}
 

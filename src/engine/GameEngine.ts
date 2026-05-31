@@ -390,6 +390,30 @@ export class GameEngine {
       x: W / 2, y: H / 2, owner: null, flying: false,
       tx: 0, ty: 0, lastTouch: "us", onArrive: null,
     };
+
+    // Authored starting positions override the formation defaults for the players
+    // the author placed. Applied AFTER the kickoff half-clamp/circle push-out so a
+    // scenario can intentionally put, say, a presser in our half — the author's
+    // placement wins. Undragged players keep their formation spot above.
+    this.applyStartPositions();
+  }
+
+  // Move the players the author explicitly placed to their authored spawn spots.
+  // Keyed "us:<role>" / "them:<role>". No half-clamp: authored intent wins.
+  private applyStartPositions() {
+    const sp = this.config.scenarioSetup?.startPositions;
+    if (!sp) return;
+    const all = [this.you, ...this.mates, this.gkUs, ...this.opps, this.gkThem];
+    for (const p of all) {
+      if (!p) continue;
+      const key = `${p.side}:${p.gk ? "gk" : p.role}`;
+      const pos = sp[key];
+      if (!pos) continue;
+      const h = this.homeXY(p.side, { fx: pos.fx, fy: pos.fy });
+      p.x = clamp(h.x, L, R);
+      p.y = clamp(h.y, TOP, BOT);
+      p.px = p.x; p.py = p.y;
+    }
   }
 
   // ---------- Match lifecycle ----------
