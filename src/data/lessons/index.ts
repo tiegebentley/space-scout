@@ -6,11 +6,13 @@ import type { Lesson, Course } from "@/types/lessons";
 import { SPACING_LESSON } from "./spacing";
 import { MEET_SHAPE_LESSON } from "./meet-shape";
 import { RESTARTS_LESSON } from "./restarts";
+import { PLAYING_OUT_BACK_LESSON } from "./playing-out-back";
 
 export const LESSONS: Record<string, Lesson> = {
   [MEET_SHAPE_LESSON.id]: MEET_SHAPE_LESSON,
   [SPACING_LESSON.id]: SPACING_LESSON,
   [RESTARTS_LESSON.id]: RESTARTS_LESSON,
+  [PLAYING_OUT_BACK_LESSON.id]: PLAYING_OUT_BACK_LESSON,
 };
 
 export function getLesson(id: string): Lesson | undefined {
@@ -18,6 +20,19 @@ export function getLesson(id: string): Lesson | undefined {
 }
 
 export const COURSES: Course[] = [
+  {
+    id: "5v5-pilot",
+    title: "5v5 Pilot Course",
+    icon: "🚀",
+    level: "beginner",
+    description:
+      "The pilot course: three focused 5v5 lessons. Start by learning to play out of the back through the #6, then build from there.",
+    lessonIds: [
+      "playing-out-of-the-back",
+      "pilot-lesson-2",
+      "pilot-lesson-3",
+    ],
+  },
   {
     id: "5v5-beginner",
     title: "5v5 Beginner",
