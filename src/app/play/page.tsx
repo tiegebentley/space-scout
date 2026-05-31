@@ -14,7 +14,7 @@ const ROLE_LABELS: Record<string, string> = {
   hold: "Holding Mid (6)",
   lw: "Left Wing (7)",
   rw: "Right Wing (11)",
-  fwd: "Forward (9)",
+  fwd: "Forward (10)",
   lcm: "Left CM (8)",
   rcm: "Right CM (10)",
 };

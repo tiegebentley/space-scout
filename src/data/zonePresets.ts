@@ -23,9 +23,9 @@ export const BUILTIN_PRESETS: RulePreset[] = [
     builtin: true,
     rules: [
       { team: "us", role: "hold", xMin: 0.10, xMax: 0.90, yMin: 0.0, yMax: 0.38, label: "Blue #6 zone", color: US },
-      { team: "us", role: "fwd", xMin: 0.15, xMax: 0.85, yMin: 0.55, yMax: 1.0, label: "Blue #9 zone", color: US },
+      { team: "us", role: "fwd", xMin: 0.15, xMax: 0.85, yMin: 0.55, yMax: 1.0, label: "Blue #10 zone", color: US },
       { team: "them", role: "hold", xMin: 0.10, xMax: 0.90, yMin: 0.0, yMax: 0.38, label: "Red #6 zone", color: THEM },
-      { team: "them", role: "fwd", xMin: 0.15, xMax: 0.85, yMin: 0.55, yMax: 1.0, label: "Red #9 zone", color: THEM },
+      { team: "them", role: "fwd", xMin: 0.15, xMax: 0.85, yMin: 0.55, yMax: 1.0, label: "Red #10 zone", color: THEM },
     ],
   },
   {
@@ -59,8 +59,8 @@ export const BUILTIN_PRESETS: RulePreset[] = [
     rules: [
       { team: "us", role: "hold", xMin: 0.20, xMax: 0.80, yMin: 0.40, yMax: 0.75, label: "Blue #6 high", color: US, when: "attacking" },
       { team: "us", role: "hold", xMin: 0.15, xMax: 0.85, yMin: 0.0, yMax: 0.35, label: "Blue #6 deep", color: US, when: "defending" },
-      { team: "us", role: "fwd", xMin: 0.20, xMax: 0.80, yMin: 0.60, yMax: 1.0, label: "Blue #9 line", color: US, when: "attacking" },
-      { team: "us", role: "fwd", xMin: 0.25, xMax: 0.75, yMin: 0.35, yMax: 0.70, label: "Blue #9 recover", color: US, when: "defending" },
+      { team: "us", role: "fwd", xMin: 0.20, xMax: 0.80, yMin: 0.60, yMax: 1.0, label: "Blue #10 line", color: US, when: "attacking" },
+      { team: "us", role: "fwd", xMin: 0.25, xMax: 0.75, yMin: 0.35, yMax: 0.70, label: "Blue #10 recover", color: US, when: "defending" },
     ],
   },
 ];
