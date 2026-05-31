@@ -27,26 +27,56 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
   const [started, setStarted] = useState(false);
   const completedRef = useRef(false);
 
+  // ── Rep-based drilling ────────────────────────────────────────────────────
+  // When the scenario configures repSeconds, each rep plays that long then
+  // auto-resets to a fresh configured restart, repeating until the objective's
+  // target is reached. A successful rep (progress went up) resets early.
+  const repSeconds = matchConfig.scenarioSetup?.repSeconds ?? 0;
+  const repActive = repSeconds > 0;
+  const repMsLeftRef = useRef(repSeconds * 1000);
+  const progressRef = useRef(0);
+  const [repLeft, setRepLeft] = useState(repSeconds);
+
+  const resetRep = useCallback(() => {
+    repMsLeftRef.current = repSeconds * 1000;
+    setRepLeft(repSeconds);
+    engine.current?.resetRep();
+  }, [repSeconds, /* engine ref is stable */]); // eslint-disable-line
+
   const onEvent = useCallback((ev: EngineEvent) => {
     if (ev.type === "actionUpdate") { setCanPass(ev.canPass); setCanShoot(ev.canShoot); }
     const next = tracker.current.onEvent(ev);
     setObj(next);
-    if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); }
-  }, [onComplete]);
+    if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); return; }
+    // Successful rep → progress increased but not yet done → reset to next rep.
+    if (repActive && next.progress > progressRef.current && !next.done) {
+      progressRef.current = next.progress;
+      resetRep();
+    } else {
+      progressRef.current = next.progress;
+    }
+  }, [onComplete, repActive, resetRep]);
 
   // Objective + setup must be on the config the engine reads.
   const cfgRef = useRef<Partial<MatchConfig>>({ ...matchConfig, objective });
   const { engine, startMatch, doPass, doShoot } = useGameLoop({ canvasRef, config: cfgRef.current, onEvent });
 
-  // Time-based objective ticks.
+  // Time-based objective ticks + per-rep timer.
   useEffect(() => {
     const id = setInterval(() => {
       const next = tracker.current.onTick(100);
       setObj(next);
-      if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); }
+      if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); return; }
+      // Per-rep countdown: when a rep's time is up (no success), reset to the
+      // next rep. Only ticks once the match has started and isn't complete.
+      if (repActive && started && !next.done) {
+        repMsLeftRef.current -= 100;
+        if (repMsLeftRef.current <= 0) resetRep();
+        setRepLeft(Math.max(0, Math.ceil(repMsLeftRef.current / 1000)));
+      }
     }, 100);
     return () => clearInterval(id);
-  }, [onComplete]);
+  }, [onComplete, repActive, started, resetRep]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -70,7 +100,12 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
         obj.done ? "bg-[#2B8A4E14] border-[#2B8A4E55]" : obj.failed ? "bg-[#fff3e0] border-[#f0b657]" : "bg-white border-[rgba(20,60,35,.12)]")}>
         <div className="flex items-center justify-between">
           <p className="text-sm font-extrabold text-[#16241c]">🎯 {obj.label}</p>
-          <p className="text-sm font-extrabold text-[#2B8A4E]">{obj.progress}/{obj.target}</p>
+          <div className="flex items-center gap-2">
+            {repActive && started && !obj.done && (
+              <span className="text-[11px] font-extrabold text-[#5d6f63] tabular-nums">⏱ {repLeft}s</span>
+            )}
+            <p className="text-sm font-extrabold text-[#2B8A4E]">{obj.progress}/{obj.target}</p>
+          </div>
         </div>
         <div className="w-full bg-[#e8f0e6] rounded-full h-2 overflow-hidden mt-1">
           <div className="h-full bg-[#2B8A4E] rounded-full transition-all" style={{ width: `${pct}%` }} />

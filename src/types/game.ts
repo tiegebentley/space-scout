@@ -95,6 +95,11 @@ export interface ScenarioSetup {
   // happens here instead of where the ball went out.
   restartX?: number;
   restartY?: number;
+  // Rep-based drilling: each rep plays for this many seconds, then the scenario
+  // auto-resets to a fresh configured restart and runs again — repeating until
+  // the objective's target count is reached. A successful rep resets early.
+  // Omitted/0 = single continuous run (no auto-reset).
+  repSeconds?: number;
 }
 
 export interface MatchConfig {

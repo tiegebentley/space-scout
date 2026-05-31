@@ -458,7 +458,10 @@ export class GameEngine {
           this.countdownPhase = null;
           this.emit({ type: "countdown", value: null });
           this.firstKickoff = false;
-          this.setRestart({ type: "kickoff", team: "us", x: W / 2, y: H / 2 });
+          // Scenario steps that configure a restart (e.g. "every restart is a
+          // throw-in by us") OPEN on that restart instead of a center kickoff —
+          // so the drill begins from the situation being taught.
+          this.openScenarioOrKickoff();
           this.deadTimer = 0;
         } else {
           this.countdownPhase = next[this.countdownPhase]!;
@@ -553,6 +556,39 @@ export class GameEngine {
   }
 
   // ---------- Restart handling ----------
+
+  // Open the match (or a rep reset) on the scenario's configured restart if one
+  // is set; otherwise the normal center kickoff. setRestart() applies the forced
+  // type / team / fixed point. We pass a non-kickoff seed type so the override
+  // (which deliberately skips kickoffs) actually fires.
+  private openScenarioOrKickoff() {
+    const setup = this.config.scenarioSetup;
+    if (setup?.forcedRestart) {
+      const team = setup.restartTeam ?? "us";
+      // Seed at the fixed point if given, else a sensible touchline default; the
+      // forced-restart logic in setRestart will normalize type/team/point.
+      const x = setup.restartX ?? W / 2;
+      const y = setup.restartY ?? (team === "us" ? BOT - 8 : TOP + 8);
+      this.setRestart({ type: setup.forcedRestart, team, x, y });
+    } else {
+      this.setRestart({ type: "kickoff", team: "us", x: W / 2, y: H / 2 });
+    }
+  }
+
+  // Rep-based scenario drilling: reset to a fresh configured restart WITHOUT
+  // touching score/objective progress, so a scenario can run repeated reps
+  // (throw-in → play → reset → throw-in …). Called by the lesson Scenario UI on
+  // a successful rep or when the per-rep timer expires.
+  resetRep() {
+    if (!this.running) return;
+    this.ball.flying = false;
+    this.ball.owner = null;
+    this.ball.launchedBy = null;
+    this.youHasBall = false;
+    this.kickoffPositions();
+    this.openScenarioOrKickoff();
+    this.deadTimer = 0;
+  }
 
   private setRestart(r: Restart) {
     // Scenario override: force every NON-kickoff dead ball to a configured type

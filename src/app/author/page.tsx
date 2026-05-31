@@ -58,6 +58,7 @@ interface DraftScenario {
   aiDifficulty: "easy" | "medium" | "hard";
   forcedRestart: "" | "throwin" | "goalkick" | "kickoff" | "corner";
   restartTeam: "us" | "them";   // which team starts in possession of the restart
+  repSeconds: number;            // 0 = single run; >0 = auto-reset every N seconds
   objType: ObjType;
   objTarget: number;
   objToRole: string;         // passCount: pass-to role; receiveInZone: receiver
@@ -80,7 +81,7 @@ function blankScenario(kind: StepKind = "instructional"): DraftScenario {
     liveTitle: kind === "game" ? "Now play a game" : "Try it live",
     liveBody: "", format: "5v5", userRole: "hold",
     oppTacticId: "possession", duration: 180000, aiDifficulty: "medium",
-    forcedRestart: "", restartTeam: "us",
+    forcedRestart: "", restartTeam: "us", repSeconds: 0,
     objType: "passCount", objTarget: 5, objToRole: "gk",
     objZone: null, restartPoint: null, zoneRules: [],
   };
@@ -145,7 +146,12 @@ function draftToStep(d: DraftScenario): LessonStep {
       matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules },
       objective: draftToObjective(d),
       scenarioSetup: d.forcedRestart
-        ? { forcedRestart: d.forcedRestart, restartTeam: d.restartTeam, ...(d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}) }
+        ? {
+            forcedRestart: d.forcedRestart,
+            restartTeam: d.restartTeam,
+            ...(d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}),
+            ...(d.repSeconds > 0 ? { repSeconds: d.repSeconds } : {}),
+          }
         : undefined,
     };
   }
@@ -200,6 +206,7 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.zoneRules = st.matchConfig.zoneRules ?? [];
       d.forcedRestart = st.scenarioSetup?.forcedRestart ?? "";
       d.restartTeam = st.scenarioSetup?.restartTeam ?? "us";
+      d.repSeconds = st.scenarioSetup?.repSeconds ?? 0;
       d.objType = st.objective.type;
       d.objTarget = st.objective.type === "keepPossession" ? st.objective.seconds
         : st.objective.type === "winBack" ? st.objective.withinSeconds
@@ -798,6 +805,21 @@ function AuthorEditor() {
                           {placeMode === "restart" ? "Click the field…" : cur.restartPoint ? "✓ Restart point set" : "⚽ Set restart point"}
                         </button>
                         {cur.restartPoint && <button onClick={() => patch({ restartPoint: null })} className="text-[11px] font-bold text-[#E0463B] cursor-pointer">clear</button>}
+                      </div>
+                      {/* Rep-based drilling: auto-reset to a fresh restart every N seconds. */}
+                      <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-1.5 text-[11px] font-bold text-[#5d6f63] cursor-pointer">
+                          <input type="checkbox" checked={cur.repSeconds > 0} onChange={(e) => patch({ repSeconds: e.target.checked ? 15 : 0 })} />
+                          Repeat reps
+                        </label>
+                        {cur.repSeconds > 0 && (
+                          <label className="text-[11px] font-bold text-[#5d6f63]">every
+                            <input type="number" min={3} max={120} value={cur.repSeconds}
+                              onChange={(e) => patch({ repSeconds: Math.max(3, Math.min(120, Number(e.target.value) || 15)) })}
+                              className="mx-1 w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
+                            sec, until the target count is reached
+                          </label>
+                        )}
                       </div>
                     </>
                   )}

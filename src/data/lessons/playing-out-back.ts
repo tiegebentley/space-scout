@@ -144,13 +144,15 @@ export const PLAYING_OUT_BACK_LESSON: Lesson = {
       body:
         "It's a throw-in in your own half. You're the #6 (blue). Step into the open space in the middle and receive the ball there — show for it, get on the ball, and beat the press. Receive in the highlighted area to complete it.",
       matchConfig: { format: "5v5", userRole: "hold", oppTacticId: "possession", duration: 180000, aiDifficulty: "medium", zoneRules: [] },
-      scenarioSetup: { forcedRestart: "throwin", restartTeam: "us" },
+      // Rep-based drill: open on a blue throw-in, auto-reset every 15s, and run
+      // reps until the #6 has received in the zone 4 times.
+      scenarioSetup: { forcedRestart: "throwin", restartTeam: "us", repSeconds: 15 },
       objective: {
         type: "receiveInZone",
         label: "#6 receives in the zone",
         role: "hold",
         zone: RECEIVE_ZONE,
-        target: 1,
+        target: 4,
       },
     },
 
