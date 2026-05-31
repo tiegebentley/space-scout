@@ -851,15 +851,26 @@ function AuthorEditor() {
                         title={cur.objType !== "receiveInZone" ? "Set the objective to 'Receive in a zone' first" : undefined}
                         className={clsx("px-3 py-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed", cur.startTrigger === "enter-zone" ? "bg-[#2B8A4E] text-white" : "bg-white text-[#5d6f63]")}>▭ PLAYER ENTERS BOX</button>
                     </div>
-                    {cur.startTrigger === "enter-zone"
-                      ? <span className="text-[10px] text-[#5d6f63]">Ball is held until the player you control steps into the target zone.</span>
-                      : (<label className="flex items-center gap-1 text-[11px] font-bold text-[#5d6f63]">
-                          Get-set pause
-                          <input type="number" min={0} max={30} value={cur.restartDelaySec}
-                            onChange={(e) => patch({ restartDelaySec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
+                    {cur.startTrigger === "enter-zone" ? (
+                      <>
+                        <span className="text-[10px] text-[#5d6f63]">Ball is held until the player you control steps into the target zone.</span>
+                        <label className="flex items-center gap-1 text-[11px] font-bold text-[#5d6f63]">
+                          Then wait
+                          <input type="number" min={0} max={10} step={0.5} value={cur.restartDelaySec}
+                            onChange={(e) => patch({ restartDelaySec: Math.max(0, Math.min(10, Number(e.target.value) || 0)) })}
                             className="mx-1 w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
-                          sec before the ball is taken (move into position)
-                        </label>)}
+                          sec after you enter, then play the ball in
+                        </label>
+                      </>
+                    ) : (
+                      <label className="flex items-center gap-1 text-[11px] font-bold text-[#5d6f63]">
+                        Get-set pause
+                        <input type="number" min={0} max={30} value={cur.restartDelaySec}
+                          onChange={(e) => patch({ restartDelaySec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
+                          className="mx-1 w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
+                        sec before the ball is taken (move into position)
+                      </label>
+                    )}
                   </div>
                 </div>
                 <div className={GROUP}>

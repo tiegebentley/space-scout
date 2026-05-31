@@ -517,13 +517,15 @@ export class GameEngine {
       this.keyMove();
       this.moveGK(this.gkUs);
       this.moveGK(this.gkThem);
-      // "enter-zone" start: take the ball the moment YOU are inside the receive
-      // zone (after a short grace so it can't fire on frame 0 if you spawn in it),
-      // instead of waiting out the timer. The deadTimer still ticks as a safety
-      // cap below, so a rep where you never enter eventually resumes/resets.
+      // "enter-zone" start: once YOU step into the receive zone (after a short
+      // grace so it can't fire on frame 0 if you spawn in it), stop waiting and
+      // arm a short get-set delay so the ball is played in a beat LATER — you
+      // settle in the box, THEN it comes. restartDelaySec drives that delay (2.5s
+      // default). Until entry the deadTimer ticks as a ~12s safety cap below.
       if (this.waitingForZoneStart && this.deadTimer < 12 * 60 - 30 && this.inObjectiveZone()) {
         this.waitingForZoneStart = false;
-        this.deadTimer = 0;
+        const delaySec = this.config.scenarioSetup?.restartDelaySec ?? 2.5;
+        this.deadTimer = Math.round(delaySec * 60);
       }
       if (this.deadTimer > 0) {
         this.deadTimer--;

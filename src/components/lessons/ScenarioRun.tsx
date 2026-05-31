@@ -35,6 +35,14 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
   const repActive = repSeconds > 0;
   const repMsLeftRef = useRef(repSeconds * 1000);
   const progressRef = useRef(0);
+  // Rep scoring. The authoritative progress for a rep-based scenario is the
+  // number of reps that SCORED (received in the zone) — counted here, not from
+  // the pure tracker's raw event count. repScoredRef guards one credit per rep:
+  // the first receive credits the rep, then the rep keeps PLAYING for the rest of
+  // repSeconds (you get your full designated play time after receiving) and any
+  // further receives that rep are ignored.
+  const repScoredRef = useRef(false);
+  const repScoredCountRef = useRef(0);
   const [repLeft, setRepLeft] = useState(repSeconds);
   // Engine live/dead state. The rep clock only runs while LIVE, so the dead-ball
   // "get set" pause (restartDelaySec) doesn't eat into the rep's play time.
@@ -44,6 +52,7 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
   const resetRep = useCallback(() => {
     repMsLeftRef.current = repSeconds * 1000;
     setRepLeft(repSeconds);
+    repScoredRef.current = false;
     engine.current?.resetRep();
   }, [repSeconds, /* engine ref is stable */]); // eslint-disable-line
 
@@ -51,16 +60,30 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
     if (ev.type === "actionUpdate") { setCanPass(ev.canPass); setCanShoot(ev.canShoot); }
     if (ev.type === "stateChange") { liveRef.current = ev.state === "live"; setIsLive(ev.state === "live"); }
     const next = tracker.current.onEvent(ev);
-    setObj(next);
-    if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); return; }
-    // Successful rep → progress increased but not yet done → reset to next rep.
-    if (repActive && next.progress > progressRef.current && !next.done) {
+
+    // Non-rep scenarios: the pure tracker is authoritative.
+    if (!repActive) {
       progressRef.current = next.progress;
-      resetRep();
-    } else {
-      progressRef.current = next.progress;
+      setObj(next);
+      if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); }
+      return;
     }
-  }, [onComplete, repActive, resetRep]);
+
+    // Rep-based: progress = number of reps that scored. The first receive in a
+    // rep credits it (repScoredRef); the rep then plays on for its full time and
+    // further receives are ignored. We DON'T reset on score — the per-rep timer
+    // (below) governs the reset, so you get your designated play time after the
+    // receive.
+    if (next.progress > progressRef.current && !repScoredRef.current) {
+      repScoredRef.current = true;
+      repScoredCountRef.current += 1;
+    }
+    progressRef.current = next.progress;
+    const reps = repScoredCountRef.current;
+    const done = reps >= next.target;
+    setObj({ ...next, progress: reps, done });
+    if (done && !completedRef.current) { completedRef.current = true; onComplete(); }
+  }, [onComplete, repActive]);
 
   // Objective + setup must be on the config the engine reads.
   const cfgRef = useRef<Partial<MatchConfig>>({ ...matchConfig, objective });
@@ -70,12 +93,20 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
   useEffect(() => {
     const id = setInterval(() => {
       const next = tracker.current.onTick(100);
-      setObj(next);
-      if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); return; }
-      // Per-rep countdown: ticks only while the ball is LIVE (so the dead-ball
-      // "get set" pause doesn't burn the rep clock). When a rep's time is up
-      // with no success, reset to the next rep.
-      if (repActive && started && liveRef.current && !next.done) {
+      // For rep-based scenarios the rep count (in onEvent) owns the displayed
+      // progress, so don't clobber it with the tracker's raw count here. The
+      // tracker tick only matters for time-based objectives (keepPossession/
+      // winBack), which aren't rep-based.
+      if (!repActive) {
+        setObj(next);
+        if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); return; }
+        return;
+      }
+      // Per-rep countdown: ticks only while the ball is LIVE (so neither the
+      // dead-ball "get set" pause NOR the enter-zone wait burns the rep clock).
+      // When a rep's time is up, reset to the next rep — whether or not it scored
+      // (a scored rep still plays out its full repSeconds before resetting).
+      if (started && liveRef.current && !completedRef.current) {
         repMsLeftRef.current -= 100;
         if (repMsLeftRef.current <= 0) resetRep();
         setRepLeft(Math.max(0, Math.ceil(repMsLeftRef.current / 1000)));
