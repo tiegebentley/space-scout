@@ -85,6 +85,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setSession(null); setRole(null); setDisplayName(null);
+    // Clear the next-user-visible content (lessons/progress/presets) from the
+    // persisted store so a shared browser doesn't leak the prior user's data.
+    useGameStore.getState().resetUserContent();
+    // Hard navigation to /login drops all remaining in-memory state and lands
+    // cleanly on the login page.
+    if (typeof window !== "undefined") window.location.assign("/login");
   }, [supabase]);
 
   const value = useMemo<AuthState>(() => ({

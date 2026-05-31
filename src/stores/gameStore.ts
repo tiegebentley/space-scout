@@ -40,6 +40,9 @@ interface GameStore {
   deleteCustomLesson: (id: string) => void;
   // Load server content into the store on login, merging any local-only items up.
   hydrateContent: () => Promise<void>;
+  // Clear all per-user content (on sign-out) so the next user on this browser
+  // starts clean and never sees the previous user's lessons/progress/presets.
+  resetUserContent: () => void;
 
   // audio
   soundEnabled: boolean;
@@ -227,6 +230,13 @@ export const useGameStore = create<GameStore>()(
           };
         });
       },
+      resetUserContent: () =>
+        set({
+          customLessons: [],
+          publishedIds: [],
+          customPresets: [],
+          progress: DEFAULT_PROGRESS,
+        }),
 
       soundEnabled: true,
       toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
