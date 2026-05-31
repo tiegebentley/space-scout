@@ -146,7 +146,7 @@ export const PLAYING_OUT_BACK_LESSON: Lesson = {
       matchConfig: { format: "5v5", userRole: "hold", oppTacticId: "possession", duration: 180000, aiDifficulty: "medium", zoneRules: [] },
       // Rep-based drill: open on a blue throw-in, auto-reset every 15s, and run
       // reps until the #6 has received in the zone 4 times.
-      scenarioSetup: { forcedRestart: "throwin", restartTeam: "us", repSeconds: 15 },
+      scenarioSetup: { forcedRestart: "throwin", restartTeam: "us", repSeconds: 15, restartDelaySec: 5 },
       objective: {
         type: "receiveInZone",
         label: "#6 receives in the zone",

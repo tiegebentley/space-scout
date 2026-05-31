@@ -460,9 +460,10 @@ export class GameEngine {
           this.firstKickoff = false;
           // Scenario steps that configure a restart (e.g. "every restart is a
           // throw-in by us") OPEN on that restart instead of a center kickoff —
-          // so the drill begins from the situation being taught.
+          // so the drill begins from the situation being taught. setRestart()
+          // sets the dead-ball "get set" pause (incl. restartDelaySec); don't
+          // zero it here or the ball would be taken instantly.
           this.openScenarioOrKickoff();
-          this.deadTimer = 0;
         } else {
           this.countdownPhase = next[this.countdownPhase]!;
           this.countdownTimer = this.countdownPhase === "GO" ? 30 : 60;
@@ -587,8 +588,10 @@ export class GameEngine {
     this.ball.launchedBy = null;
     this.youHasBall = false;
     this.kickoffPositions();
+    // openScenarioOrKickoff() → setRestart() sets the dead-ball "get set" pause
+    // (incl. restartDelaySec). Do NOT zero it here, or reps would resume the ball
+    // instantly with no time to reposition.
     this.openScenarioOrKickoff();
-    this.deadTimer = 0;
   }
 
   private setRestart(r: Restart) {
@@ -613,7 +616,13 @@ export class GameEngine {
     }
     this.gstate = "dead";
     this.restart = r;
-    this.deadTimer = r.type === "kickoff" ? 120 : Math.round(70 / this.PACE);
+    // Dead-ball "get set" pause (ticks 1/frame @ 60fps). A scenario can set an
+    // explicit restartDelaySec so the player has time to move into position
+    // before the ball is taken; otherwise use the defaults.
+    const delaySec = setup?.restartDelaySec;
+    this.deadTimer = delaySec != null && r.type !== "kickoff"
+      ? Math.round(delaySec * 60)
+      : (r.type === "kickoff" ? 120 : Math.round(70 / this.PACE));
     this.youHasBall = false;
     this.ball.flying = false;
     this.ball.owner = null;

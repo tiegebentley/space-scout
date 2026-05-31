@@ -100,6 +100,10 @@ export interface ScenarioSetup {
   // the objective's target count is reached. A successful rep resets early.
   // Omitted/0 = single continuous run (no auto-reset).
   repSeconds?: number;
+  // Seconds the ball waits at the restart spot BEFORE it's taken — a "get set"
+  // window so the player can move into position first. You can move during it.
+  // Omitted = the engine's default throw-in pause.
+  restartDelaySec?: number;
 }
 
 export interface MatchConfig {

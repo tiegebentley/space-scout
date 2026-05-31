@@ -36,6 +36,10 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
   const repMsLeftRef = useRef(repSeconds * 1000);
   const progressRef = useRef(0);
   const [repLeft, setRepLeft] = useState(repSeconds);
+  // Engine live/dead state. The rep clock only runs while LIVE, so the dead-ball
+  // "get set" pause (restartDelaySec) doesn't eat into the rep's play time.
+  const liveRef = useRef(false);
+  const [isLive, setIsLive] = useState(false);
 
   const resetRep = useCallback(() => {
     repMsLeftRef.current = repSeconds * 1000;
@@ -45,6 +49,7 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
 
   const onEvent = useCallback((ev: EngineEvent) => {
     if (ev.type === "actionUpdate") { setCanPass(ev.canPass); setCanShoot(ev.canShoot); }
+    if (ev.type === "stateChange") { liveRef.current = ev.state === "live"; setIsLive(ev.state === "live"); }
     const next = tracker.current.onEvent(ev);
     setObj(next);
     if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); return; }
@@ -67,9 +72,10 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
       const next = tracker.current.onTick(100);
       setObj(next);
       if (next.done && !completedRef.current) { completedRef.current = true; onComplete(); return; }
-      // Per-rep countdown: when a rep's time is up (no success), reset to the
-      // next rep. Only ticks once the match has started and isn't complete.
-      if (repActive && started && !next.done) {
+      // Per-rep countdown: ticks only while the ball is LIVE (so the dead-ball
+      // "get set" pause doesn't burn the rep clock). When a rep's time is up
+      // with no success, reset to the next rep.
+      if (repActive && started && liveRef.current && !next.done) {
         repMsLeftRef.current -= 100;
         if (repMsLeftRef.current <= 0) resetRep();
         setRepLeft(Math.max(0, Math.ceil(repMsLeftRef.current / 1000)));
@@ -102,7 +108,9 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
           <p className="text-sm font-extrabold text-[#16241c]">🎯 {obj.label}</p>
           <div className="flex items-center gap-2">
             {repActive && started && !obj.done && (
-              <span className="text-[11px] font-extrabold text-[#5d6f63] tabular-nums">⏱ {repLeft}s</span>
+              isLive
+                ? <span className="text-[11px] font-extrabold text-[#5d6f63] tabular-nums">⏱ {repLeft}s</span>
+                : <span className="text-[11px] font-extrabold text-[#B07E00]">Get set…</span>
             )}
             <p className="text-sm font-extrabold text-[#2B8A4E]">{obj.progress}/{obj.target}</p>
           </div>

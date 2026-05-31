@@ -59,6 +59,7 @@ interface DraftScenario {
   forcedRestart: "" | "throwin" | "goalkick" | "kickoff" | "corner";
   restartTeam: "us" | "them";   // which team starts in possession of the restart
   repSeconds: number;            // 0 = single run; >0 = auto-reset every N seconds
+  restartDelaySec: number;       // "get set" pause before the ball is taken
   objType: ObjType;
   objTarget: number;
   objToRole: string;         // passCount: pass-to role; receiveInZone: receiver
@@ -81,7 +82,7 @@ function blankScenario(kind: StepKind = "instructional"): DraftScenario {
     liveTitle: kind === "game" ? "Now play a game" : "Try it live",
     liveBody: "", format: "5v5", userRole: "hold",
     oppTacticId: "possession", duration: 180000, aiDifficulty: "medium",
-    forcedRestart: "", restartTeam: "us", repSeconds: 0,
+    forcedRestart: "", restartTeam: "us", repSeconds: 0, restartDelaySec: 5,
     objType: "passCount", objTarget: 5, objToRole: "gk",
     objZone: null, restartPoint: null, zoneRules: [],
   };
@@ -151,6 +152,7 @@ function draftToStep(d: DraftScenario): LessonStep {
             restartTeam: d.restartTeam,
             ...(d.restartPoint ? { restartX: d.restartPoint.x, restartY: d.restartPoint.y } : {}),
             ...(d.repSeconds > 0 ? { repSeconds: d.repSeconds } : {}),
+            ...(d.restartDelaySec > 0 ? { restartDelaySec: d.restartDelaySec } : {}),
           }
         : undefined,
     };
@@ -207,6 +209,7 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.forcedRestart = st.scenarioSetup?.forcedRestart ?? "";
       d.restartTeam = st.scenarioSetup?.restartTeam ?? "us";
       d.repSeconds = st.scenarioSetup?.repSeconds ?? 0;
+      d.restartDelaySec = st.scenarioSetup?.restartDelaySec ?? 5;
       d.objType = st.objective.type;
       d.objTarget = st.objective.type === "keepPossession" ? st.objective.seconds
         : st.objective.type === "winBack" ? st.objective.withinSeconds
@@ -821,6 +824,14 @@ function AuthorEditor() {
                           </label>
                         )}
                       </div>
+                      {/* "Get set" pause before the ball is taken — time to move into position. */}
+                      <label className="flex items-center gap-1 text-[11px] font-bold text-[#5d6f63]">
+                        Get-set pause
+                        <input type="number" min={0} max={30} value={cur.restartDelaySec}
+                          onChange={(e) => patch({ restartDelaySec: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
+                          className="mx-1 w-14 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-xs font-bold bg-white" />
+                        sec before the ball is taken (move into position)
+                      </label>
                     </>
                   )}
                 </div>
