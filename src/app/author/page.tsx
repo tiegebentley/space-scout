@@ -14,6 +14,7 @@ import { FormationPreview } from "@/components/lessons/FormationPreview";
 import { MatchSetupControls } from "@/components/game/MatchSetupControls";
 import { LessonPlayer } from "@/components/lessons/LessonPlayer";
 import { useGameStore } from "@/stores/gameStore";
+import { useAuth } from "@/lib/auth/AuthProvider";
 import { getLesson } from "@/data/lessons";
 import { W, H, JERSEY_NUMBERS, ROLE_LABELS } from "@/engine/constants";
 import { BUILTIN_PRESETS } from "@/data/zonePresets";
@@ -290,6 +291,7 @@ export default function AuthorPage() {
 }
 
 function AuthorEditor() {
+  const { role, can, loading: authLoading } = useAuth();
   const saveCustomLesson = useGameStore((s) => s.saveCustomLesson);
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
   // The persisted store rehydrates from localStorage asynchronously after mount.
@@ -572,15 +574,20 @@ function AuthorEditor() {
 
   const onSave = () => {
     const lesson = buildLesson(true);
-    saveCustomLesson(lesson);
+    // A master editing a built-in/program lesson PUBLISHES the fork so it plays
+    // for everyone. Coach lessons (and master's brand-new lessons) stay private.
+    const publish = !!forkedFromBuiltin && can("lesson:publish");
+    saveCustomLesson(lesson, { publish });
     const wasUpdate = !!editingOwnId;
     setEditingOwnId(lesson.id); // subsequent saves now update this lesson in place
     toast(
       wasUpdate
         ? `Updated "${lesson.title}"`
-        : forkedFromBuiltin
-          ? `Saved — "${lesson.title}" now plays your version in the course`
-          : `Saved "${lesson.title}" — find it under Your Lessons on the Learn page`
+        : publish
+          ? `Published — "${lesson.title}" now plays in the program for everyone`
+          : forkedFromBuiltin
+            ? `Saved — "${lesson.title}" now plays your version in the course`
+            : `Saved "${lesson.title}" — find it under Your Lessons on the Learn page`
     );
   };
   const onTest = () => setTestLesson(buildLesson());
@@ -622,6 +629,36 @@ function AuthorEditor() {
     rd.readAsText(f);
     e.target.value = "";
   };
+
+  // ---- role guard: the Lesson Builder is coach/master only ----
+  // (RLS is the real enforcement; this is the UI gate + a friendly message.)
+  if (!authLoading && !can("author:open")) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+        <div className="text-4xl mb-3">🔒</div>
+        <h1 className="font-[Fredoka] font-bold text-2xl text-[#16241c]">Lesson Builder</h1>
+        <p className="text-sm font-semibold text-[#5d6f63] mt-1 max-w-xs">
+          The Lesson Builder is for coaches and the program master. Ask your master to upgrade your account if you need to author lessons.
+        </p>
+        <Link href="/" className="mt-5 rounded-xl bg-[#2B8A4E] text-white font-bold text-sm px-5 py-2.5">← Back home</Link>
+      </main>
+    );
+  }
+  // A coach may only author their OWN custom lessons — not edit a built-in /
+  // program lesson. Block opening a built-in for editing unless you're master.
+  const editingBuiltin = !!editParam && !!getLesson(editParam) && !editingOwnId;
+  if (!authLoading && editingBuiltin && !can("lesson:editBuiltin")) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+        <div className="text-4xl mb-3">🔒</div>
+        <h1 className="font-[Fredoka] font-bold text-2xl text-[#16241c]">That lesson is part of the program</h1>
+        <p className="text-sm font-semibold text-[#5d6f63] mt-1 max-w-xs">
+          Coaches can create their own custom lessons, but the built-in program lessons can only be edited by the master. Head to the Builder to start a new lesson instead.
+        </p>
+        <Link href="/author" className="mt-5 rounded-xl bg-[#2B8A4E] text-white font-bold text-sm px-5 py-2.5">New custom lesson</Link>
+      </main>
+    );
+  }
 
   // ---- test-play overlay ----
   if (testLesson) {

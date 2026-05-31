@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth/AuthProvider";
 
 export const metadata: Metadata = {
   title: "Space Scout — Youth Soccer Tactics Trainer",
@@ -27,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-dvh flex flex-col">{children}</body>
+      <body className="min-h-dvh flex flex-col"><AuthProvider>{children}</AuthProvider></body>
     </html>
   );
 }

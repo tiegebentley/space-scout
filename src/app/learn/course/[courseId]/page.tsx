@@ -7,6 +7,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { COURSES, LESSONS, resolveLesson, editedIdFor } from "@/data/lessons";
 import { useGameStore } from "@/stores/gameStore";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const LEVEL_STYLES: Record<string, string> = {
   beginner: "text-[#2B8A4E]",
@@ -18,6 +19,7 @@ export default function CoursePage({ params }: { params: Promise<{ courseId: str
   const { courseId } = use(params);
   const completed = useGameStore((s) => s.progress.completedLessons) ?? [];
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
+  const { can } = useAuth();
   const course = COURSES.find((c) => c.id === courseId);
 
   if (!course) {
@@ -68,7 +70,10 @@ export default function CoursePage({ params }: { params: Promise<{ courseId: str
                   {lesson?.description && <p className="text-[11px] font-semibold text-[#5d6f63]">{lesson.description}</p>}
                 </Link>
                 {done && <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#2B8A4E] text-white text-sm font-bold">✓</span>}
-                <Link href={`/author?edit=${id}`} title="Edit this lesson" className="shrink-0 rounded-lg bg-white border border-[rgba(20,60,35,.15)] text-[#2E6FE0] text-[11px] font-extrabold px-2.5 py-1.5">Edit</Link>
+                {/* Editing a program lesson is master-only. */}
+                {can("lesson:editBuiltin") && (
+                  <Link href={`/author?edit=${id}`} title="Edit this lesson" className="shrink-0 rounded-lg bg-white border border-[rgba(20,60,35,.15)] text-[#2E6FE0] text-[11px] font-extrabold px-2.5 py-1.5">Edit</Link>
+                )}
               </div>
             );
           })}

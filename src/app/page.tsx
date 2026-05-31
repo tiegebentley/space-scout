@@ -1,15 +1,27 @@
 "use client";
 import Link from "next/link";
 import { useGameStore, LEVEL_NAMES } from "@/stores/gameStore";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { ROLE_LABEL } from "@/lib/auth/roles";
 
 export default function HomePage() {
   const progress = useGameStore((s) => s.progress);
+  const { role, displayName, can, signOut } = useAuth();
   const levelName = LEVEL_NAMES[progress.level] || "Grassroots";
   const pct = progress.xpToNext > 0 ? Math.round((progress.xp / progress.xpToNext) * 100) : 0;
 
   return (
     <main className="flex-1 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
+        {/* Account bar */}
+        <div className="flex items-center justify-between mb-4 text-xs">
+          <span className="font-bold text-[#5d6f63]">
+            {displayName ?? "Signed in"}
+            {role && <span className="ml-2 rounded-full bg-[#16241c] text-white px-2 py-0.5 font-extrabold uppercase tracking-wide">{ROLE_LABEL[role]}</span>}
+          </span>
+          <button onClick={() => signOut()} className="font-bold text-[#2E6FE0] hover:underline cursor-pointer">Sign out</button>
+        </div>
+
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-b from-[#43c46e] to-[#1F6E3D] text-4xl shadow-lg mb-4">
@@ -88,6 +100,18 @@ export default function HomePage() {
               <p className="text-sm font-semibold text-[#5d6f63] mt-0.5">Stats, achievements &amp; skill ratings</p>
             </div>
           </Link>
+
+          {/* Lesson Builder — coaches & master only */}
+          {can("author:open") && (
+            <Link href="/author" className="block">
+              <div className="bg-white text-[#16241c] rounded-2xl p-5 shadow-lg border border-[rgba(20,60,35,.1)] active:translate-y-[2px] transition-transform cursor-pointer">
+                <h2 className="font-[Fredoka] font-semibold text-xl text-[#7c3aed]">Lesson Builder</h2>
+                <p className="text-sm font-semibold text-[#5d6f63] mt-0.5">
+                  {role === "master" ? "Author lessons & edit the program" : "Create your own custom lessons"}
+                </p>
+              </div>
+            </Link>
+          )}
         </div>
 
         <p className="text-center text-[10px] font-bold text-[#5d6f63]/60 mt-6">

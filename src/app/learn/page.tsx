@@ -6,6 +6,7 @@ import Link from "next/link";
 import { clsx } from "clsx";
 import { COURSES, LESSONS, isEditOfBuiltin } from "@/data/lessons";
 import { useGameStore } from "@/stores/gameStore";
+import { useAuth } from "@/lib/auth/AuthProvider";
 
 const LEVEL_BADGE: Record<string, string> = {
   beginner: "bg-[#2B8A4E] text-white",
@@ -17,9 +18,11 @@ export default function LearnPage() {
   const completed = useGameStore((s) => s.progress.completedLessons) ?? [];
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
   const deleteCustomLesson = useGameStore((s) => s.deleteCustomLesson);
+  const { can } = useAuth();
   // Edits of built-in lessons show inside their course (as the active version),
   // so don't also list them here — only show genuinely standalone custom lessons.
   const ownLessons = customLessons.filter((l) => !isEditOfBuiltin(l.id));
+  const canAuthor = can("lesson:createCustom");
 
   return (
     <main className="flex-1 flex flex-col items-center p-4">
@@ -29,7 +32,7 @@ export default function LearnPage() {
         </div>
         <div className="flex items-center justify-between mb-1">
           <h1 className="font-[Fredoka] font-bold text-3xl text-[#16241c]">Learn</h1>
-          <Link href="/author" className="rounded-xl bg-[#2E6FE0] text-white text-xs font-extrabold px-3 py-2">+ Create lesson</Link>
+          {canAuthor && <Link href="/author" className="rounded-xl bg-[#2E6FE0] text-white text-xs font-extrabold px-3 py-2">+ Create lesson</Link>}
         </div>
         <p className="text-sm font-bold text-[#5d6f63] mb-6">Pick a course, then put each lesson into practice in a live game.</p>
 
@@ -74,11 +77,13 @@ export default function LearnPage() {
                     <p className="text-sm font-bold text-[#16241c] truncate">{l.title}</p>
                     <p className="text-[11px] font-semibold text-[#5d6f63]">{l.steps.filter((s) => s.kind === "scenario").length} scenarios{completed.includes(l.id) ? " · ✓ done" : ""}</p>
                   </Link>
-                  <Link href={`/author?edit=${l.id}`} className="shrink-0 rounded-lg bg-[#2E6FE0] text-white text-[11px] font-extrabold px-2.5 py-1.5">Edit</Link>
-                  <button
-                    onClick={() => { if (confirm(`Delete "${l.title}"?`)) deleteCustomLesson(l.id); }}
-                    className="shrink-0 rounded-lg bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] text-[11px] font-extrabold px-2.5 py-1.5 cursor-pointer"
-                  >Delete</button>
+                  {can("lesson:editOwnCustom") && <>
+                    <Link href={`/author?edit=${l.id}`} className="shrink-0 rounded-lg bg-[#2E6FE0] text-white text-[11px] font-extrabold px-2.5 py-1.5">Edit</Link>
+                    <button
+                      onClick={() => { if (confirm(`Delete "${l.title}"?`)) deleteCustomLesson(l.id); }}
+                      className="shrink-0 rounded-lg bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] text-[11px] font-extrabold px-2.5 py-1.5 cursor-pointer"
+                    >Delete</button>
+                  </>}
                 </div>
               ))}
             </div>

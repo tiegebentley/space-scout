@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import type { PlayerProgress, SkillRatings, CompletedDrill, Achievement, GameMode, MatchConfig, WingerBounds, RulePreset } from "@/types/game";
 import type { Lesson } from "@/types/lessons";
 import { XP_TABLE, LEVEL_NAMES, WINGER_X_BOUNDS } from "@/engine/constants";
+import * as sync from "@/lib/sync";
 
 interface GameStore {
   // navigation / mode
@@ -30,10 +31,15 @@ interface GameStore {
   savePreset: (preset: RulePreset) => void;
   deletePreset: (id: string) => void;
 
-  // custom lessons authored in /author (persisted)
+  // custom lessons authored in /author (persisted locally + synced to Supabase)
   customLessons: Lesson[];
-  saveCustomLesson: (lesson: Lesson) => void;
+  // ids of lessons published into the shared program (master only). Published
+  // lessons resolve as program content for everyone, not "your lessons".
+  publishedIds: string[];
+  saveCustomLesson: (lesson: Lesson, opts?: { publish?: boolean }) => void;
   deleteCustomLesson: (id: string) => void;
+  // Load server content into the store on login, merging any local-only items up.
+  hydrateContent: () => Promise<void>;
 
   // audio
   soundEnabled: boolean;
@@ -155,30 +161,72 @@ export const useGameStore = create<GameStore>()(
       setWingerBounds: (bounds) => set({ wingerBounds: bounds }),
 
       customPresets: [],
-      savePreset: (preset) =>
+      savePreset: (preset) => {
+        void sync.upsertPreset({ id: preset.id, name: preset.name ?? "Preset", data: preset });
         set((s) => ({
           customPresets: [
             ...s.customPresets.filter((p) => p.id !== preset.id),
             preset,
           ],
-        })),
-      deletePreset: (id) =>
+        }));
+      },
+      deletePreset: (id) => {
+        void sync.deletePreset(id);
         set((s) => ({
           customPresets: s.customPresets.filter((p) => p.id !== id),
-        })),
+        }));
+      },
 
       customLessons: [],
-      saveCustomLesson: (lesson) =>
-        set((s) => ({
-          customLessons: [
-            ...s.customLessons.filter((l) => l.id !== lesson.id),
-            lesson,
-          ],
-        })),
-      deleteCustomLesson: (id) =>
+      publishedIds: [],
+      saveCustomLesson: (lesson, opts) =>
+        set((s) => {
+          const publish = opts?.publish ?? s.publishedIds.includes(lesson.id);
+          // Write through to Supabase (RLS gates who may publish / edit what).
+          void sync.upsertLesson(lesson, publish);
+          return {
+            customLessons: [
+              ...s.customLessons.filter((l) => l.id !== lesson.id),
+              lesson,
+            ],
+            publishedIds: publish
+              ? Array.from(new Set([...s.publishedIds, lesson.id]))
+              : s.publishedIds.filter((id) => id !== lesson.id),
+          };
+        }),
+      deleteCustomLesson: (id) => {
+        void sync.deleteLesson(id);
         set((s) => ({
           customLessons: s.customLessons.filter((l) => l.id !== id),
-        })),
+          publishedIds: s.publishedIds.filter((p) => p !== id),
+        }));
+      },
+      hydrateContent: async () => {
+        const [remoteLessons, remoteProgress, remotePresets] = await Promise.all([
+          sync.fetchLessons(),
+          sync.fetchProgress(),
+          sync.fetchPresets(),
+        ]);
+        set((s) => {
+          // Merge: server wins on conflicts; local-only lessons get pushed up.
+          const serverIds = new Set(remoteLessons.map((r) => r.lesson.id));
+          const localOnly = s.customLessons.filter((l) => !serverIds.has(l.id));
+          localOnly.forEach((l) => void sync.upsertLesson(l, false)); // migrate up
+          const merged = [...remoteLessons.map((r) => r.lesson), ...localOnly];
+          const published = remoteLessons.filter((r) => r.isPublished).map((r) => r.lesson.id);
+          // Progress: if the server has none yet, push our local progress up.
+          if (!remoteProgress) void sync.saveProgress(s.progress);
+          const presets = remotePresets.length
+            ? remotePresets.map((p) => p.data as RulePreset)
+            : s.customPresets;
+          return {
+            customLessons: merged,
+            publishedIds: Array.from(new Set([...s.publishedIds, ...published])),
+            progress: remoteProgress ?? s.progress,
+            customPresets: presets,
+          };
+        });
+      },
 
       soundEnabled: true,
       toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
