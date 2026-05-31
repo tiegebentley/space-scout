@@ -1,12 +1,16 @@
 // PILOT COURSE — Lesson 1: "Playing Out of the Back" (5v5)
-// Five steps, building from understanding → focus → guided scenario → free game:
-//   1. info scenario    — meet the 5v5 positions & roles (tap each blue player)
-//   2. arrow scenario   — where the #6 moves when the #11 has a throw-in
-//                          (draw the #6's supporting run into a central pocket)
-//   3. explain card     — zoom in on the #6's job from a throw-in
-//   4. live-scenario     — #6 shows for a throw-in and receives in a safe zone,
+// Four steps, building from understanding → focus → guided receive → free game:
+//   1. info scenario   — meet the 5v5 positions & roles (tap each blue player)
+//   2. move scenario   — on a #11 corner throw-in, drag the #6 into the open
+//                          pocket where it can receive (graded: #6 in target zone)
+//   3. live-scenario    — #6 shows for a throw-in and receives in a safe zone,
 //                          playing around the press (objective: receiveInZone/hold)
-//   5. play             — free 5v5 controlling the #6, applying the same idea
+//   4. play            — free 5v5 controlling the #6, applying the same idea
+//
+// Authored in the in-app lesson editor and baked in here as the baseline (see the
+// project's author flow: edits made in the app save to a personal copy under
+// "Your Lessons" and reopen on the same edit URL — this file is the shipped
+// starting point those copies fork from).
 //
 // Coordinate spaces (two different ones — don't mix them up):
 //   • Static `scenario` boards use LAB coords: 1000×620, blue = "home" on the
@@ -19,7 +23,6 @@ import { W, H } from "@/engine/constants";
 
 // Where the #6 should show to receive the throw-in: central, in our own
 // (bottom) half, a little in from the touchline traffic. Engine coords.
-// Matches the orientation used by RESTARTS_LESSON's SUPPORT_BOX.
 const RECEIVE_ZONE = { x: W / 2 - 150, y: H * 0.55, w: 300, h: H * 0.3 };
 
 export const PLAYING_OUT_BACK_LESSON: Lesson = {
@@ -90,7 +93,7 @@ export const PLAYING_OUT_BACK_LESSON: Lesson = {
       },
     },
 
-    // ── STEP 2 — Where does the #6 move on a #11 throw-in? (arrow) ─────────
+    // ── STEP 2 — Drag the #6 into the open pocket on a #11 throw-in (move) ──
     {
       kind: "scenario",
       scenario: {
@@ -101,7 +104,7 @@ export const PLAYING_OUT_BACK_LESSON: Lesson = {
         youAre: "home",
         attackDir: "right",
         question: "Your #11 has a throw-in on the right. Where should the #6 move to receive?",
-        instruction: "Drag the arrow from the #6 to an open pocket where the #11 can throw to you.",
+        instruction: "Drag the #6 to an open pocket where the #11 can throw to you.",
         optimalNote:
           "The #6 steps INTO the field, into the open space just inside the #11 — short, central, and away from the red marker. That gives the thrower an easy, safe angle.",
         explanation:
@@ -110,64 +113,54 @@ export const PLAYING_OUT_BACK_LESSON: Lesson = {
           "Don't run up the line — show short, into the middle.",
           "Find the open space just inside the #11, away from the red player near you.",
         ],
-        answer: { mode: "arrow", objectId: "pob-arr" },
-        // Target pocket: central, just infield of the #11 throw-in, clear of reds.
-        zone: { x: 360, y: 180, w: 200, h: 170 },
-        optimal: { x1: 250, y1: 310, x2: 450, y2: 250 },
+        answer: { mode: "move", objectIds: ["pob2-6"] },
+        // Target pocket: the open space just infield of the #11's corner throw-in.
+        zones: { "pob2-6": { x: 66, y: 46, w: 213, h: 159 } },
+        optimals: { "pob2-6": { x: 210, y: 310 } },
         board: {
           objects: [
-            // Blue (home) — #11 on the right touchline taking the throw-in.
+            // Blue (home) — #11 in the right corner taking the throw-in.
             { id: "pob2-gk", type: "player", x: 70, y: 310, team: "home", label: "1" },
-            { id: "pob2-6", type: "player", x: 250, y: 310, team: "home", label: "6" },
+            { id: "pob2-6", type: "player", x: 209.54467328345902, y: 310, team: "home", label: "6" },
             { id: "pob2-7", type: "player", x: 360, y: 520, team: "home", label: "7" },
-            { id: "pob2-11", type: "player", x: 300, y: 70, team: "home", label: "11" },
+            { id: "pob2-11", type: "player", x: 452.2304804174198, y: 16.730128696986608, team: "home", label: "11" },
             { id: "pob2-10", type: "player", x: 520, y: 300, team: "home", label: "10" },
             // Red (away) — one presser near the #6, rest holding shape.
             { id: "pob2-a6", type: "player", x: 330, y: 360, team: "away", label: "6" },
             { id: "pob2-a7", type: "player", x: 520, y: 470, team: "away", label: "7" },
             { id: "pob2-a11", type: "player", x: 470, y: 150, team: "away", label: "11" },
             { id: "pob2-a10", type: "player", x: 600, y: 300, team: "away", label: "10" },
-            // The ball is in the #11's hands on the touchline (throw-in).
-            { id: "pob2-ball", type: "ball", x: 300, y: 55 },
-            // The arrow the kid drags — starts at the #6, tip drawn into the pocket.
-            { id: "pob-arr", type: "arrow", x: 250, y: 310, x1: 250, y1: 310, x2: 250, y2: 310, color: "#2E6FE0", style: "run" },
+            // The ball is in the #11's hands in the corner (throw-in).
+            { id: "pob2-ball", type: "ball", x: 420.6616250430145, y: 16.730128696986608 },
           ],
         },
       },
     },
 
-    // ── STEP 3 — The #6's job from a throw-in (explain) ────────────────────
-    {
-      kind: "explain",
-      title: "The #6 on a throw-in",
-      body:
-        "When your team gets a throw-in deep in your own half, the #6 is the key. Your job is to SHOW for the ball — step into an open pocket where the thrower can find you. The moment you receive it, you'll have a red player closing you down. Don't panic and don't boot it away: take a touch into space, away from the pressure, and look up. If nothing's on, the goalkeeper is always behind you to recycle and start again. Next, you'll do it live.",
-    },
-
-    // ── STEP 4 — Guided scenario: #6 receives & plays around pressure ──────
+    // ── STEP 3 — Guided scenario: #6 receives & plays around pressure ──────
     {
       kind: "live-scenario",
       title: "Show for the throw-in",
       body:
         "It's a throw-in in your own half. You're the #6 (blue). Step into the open space in the middle and receive the ball there — show for it, get on the ball, and beat the press. Receive in the highlighted area to complete it.",
-      matchConfig: { format: "5v5", userRole: "hold", zoneRules: [] },
+      matchConfig: { format: "5v5", userRole: "hold", oppTacticId: "possession", duration: 180000, aiDifficulty: "medium", zoneRules: [] },
       scenarioSetup: { forcedRestart: "throwin", restartTeam: "us" },
       objective: {
         type: "receiveInZone",
-        label: "#6 receives the throw-in in space",
+        label: "#6 receives in the zone",
         role: "hold",
         zone: RECEIVE_ZONE,
         target: 1,
       },
     },
 
-    // ── STEP 5 — Free game: apply it ───────────────────────────────────────
+    // ── STEP 4 — Free game: apply it ───────────────────────────────────────
     {
       kind: "play",
       title: "Now play a game",
       body:
         "Put it together in a full 5v5. You're the #6 — keep showing for the ball, receive in space, and play around the pressure to build out of the back. When you're stuck, recycle to the keeper and go again.",
-      matchConfig: { format: "5v5", userRole: "hold" },
+      matchConfig: { format: "5v5", userRole: "hold", oppTacticId: "possession", duration: 180000, aiDifficulty: "medium", zoneRules: [] },
     },
   ],
 };
