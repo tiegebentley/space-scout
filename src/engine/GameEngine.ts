@@ -597,21 +597,19 @@ export class GameEngine {
     // are left alone. Throw-ins snap to the nearer touchline.
     const setup = this.config.scenarioSetup;
     const forced = setup?.forcedRestart;
+    const hasFixedPoint = forced && setup?.restartX != null && setup?.restartY != null;
     if (forced && r.type !== "kickoff" && forced !== r.type) {
       r = { ...r, type: forced };
       if (setup?.restartTeam) r.team = setup.restartTeam;
-      // A throw-in is taken from a SIDELINE (left/right edge, engine X), not a
-      // goal line. Snap X to the nearer touchline; keep the depth (Y).
-      if (forced === "throwin") r.x = r.x < W / 2 ? L + 18 : R - 18;
+      // With NO authored point, a throw-in defaults to a SIDELINE (you can't
+      // throw from mid-pitch). When a point IS set, the author wins (below) and
+      // we don't snap — the ball starts exactly where it was placed.
+      if (forced === "throwin" && !hasFixedPoint) r.x = r.x < W / 2 ? L + 18 : R - 18;
     }
-    // Fixed restart point (Scenario authoring): take it from here every time.
-    if (forced && setup?.restartX != null && setup?.restartY != null && r.type !== "kickoff") {
-      let fx = clamp(setup.restartX, L, R);
-      const fy = clamp(setup.restartY, TOP, BOT);
-      // Keep throw-ins on a real sideline even when a point is set — snap the
-      // authored X to whichever touchline it's nearer, so it reads as a throw-in.
-      if (forced === "throwin") fx = setup.restartX < W / 2 ? L + 18 : R - 18;
-      r = { ...r, x: fx, y: fy };
+    // Fixed restart point (Scenario authoring): take it EXACTLY from here every
+    // time — no sideline snap, so the ball starts where the marker was dropped.
+    if (hasFixedPoint) {
+      r = { ...r, x: clamp(setup!.restartX!, L, R), y: clamp(setup!.restartY!, TOP, BOT) };
     }
     this.gstate = "dead";
     this.restart = r;
@@ -779,15 +777,30 @@ export class GameEngine {
 
   private resumeFromRestart() {
     this.gstate = "live";
-    if (this.restart?.taker) {
-      this.giveBall(this.restart.taker, true);
-    } else {
-      this.giveBall(this.poss === "us" ? this.mates[0] : this.opps[0], true);
-    }
+    const taker = this.restart?.taker ?? (this.poss === "us" ? this.mates[0] : this.opps[0]);
+    const wasForced = !!this.config.scenarioSetup?.forcedRestart && this.restart?.type !== "kickoff";
+    this.giveBall(taker, true);
     this.passCooldown = Math.round(30 / this.PACE);
     this.emitPill(this.poss === "us" ? "Your ball" : "Reds attacking", this.poss);
     this.restart = null;
     this.emit({ type: "stateChange", state: "live" });
+
+    // A throw-in / restart begins with a THROW to a teammate, not a dribble. In a
+    // scenario whose objective names a receiver role (e.g. "#6 receives in the
+    // zone"), deliver to that teammate so the drill starts the way it's taught.
+    if (wasForced && taker) {
+      const target = this.restartReceiver(taker);
+      if (target && target !== taker) this.doPass(taker, target);
+    }
+  }
+
+  // The teammate a forced restart should be thrown to: the objective's receiver
+  // role if set and present on the taker's team; otherwise null (taker keeps it).
+  private restartReceiver(taker: Player): Player | null {
+    const role = (this.config.objective as { role?: string } | undefined)?.role;
+    if (!role) return null;
+    const team = taker.side === "us" ? this.teamUs : this.teamThem;
+    return team.find((p) => p !== taker && !p.gk && this.roleKeyOf(p) === role) ?? null;
   }
 
   // ---------- Ball possession ----------
