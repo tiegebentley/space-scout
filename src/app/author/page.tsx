@@ -238,6 +238,19 @@ export default function AuthorPage() {
 function AuthorEditor() {
   const saveCustomLesson = useGameStore((s) => s.saveCustomLesson);
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
+  // The persisted store rehydrates from localStorage asynchronously after mount.
+  // We must wait for that before loading ?edit=<id>, otherwise customLessons is
+  // still [] and we'd load the pristine built-in instead of a saved fork/copy.
+  // Start false (SSR-safe: persist API is client-only). The effect flips it true
+  // once hydration is done — either already, or via the finish callback.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    const persist = useGameStore.persist;
+    if (!persist) { setHydrated(true); return; }
+    const unsub = persist.onFinishHydration(() => setHydrated(true));
+    if (persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, []);
   const customPresets = useGameStore((s) => s.customPresets) ?? [];
   const allPresets = [...BUILTIN_PRESETS, ...customPresets];
   const searchParams = useSearchParams();
@@ -256,17 +269,32 @@ function AuthorEditor() {
   const [testLesson, setTestLesson] = useState<Lesson | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  // When editing: the id of the OWN lesson we update in place. Editing a built-in
-  // leaves this null so Save forks a new custom copy (originals stay intact).
+  // When editing: the id of the OWN lesson we update in place. Editing a PRISTINE
+  // built-in leaves this null so the first Save forks a custom copy (originals in
+  // code stay intact). The fork gets a STABLE id derived from the built-in, so
+  // re-opening ?edit=<builtinId> reopens your saved copy instead of the original.
   const [editingOwnId, setEditingOwnId] = useState<string | null>(null);
+  // The built-in this draft was forked from (if any) — drives the stable fork id
+  // and "based on …" labelling. null when authoring a brand-new lesson.
+  const [forkedFromBuiltin, setForkedFromBuiltin] = useState<string | null>(null);
   const loadedFor = useRef<string | null>(null);
 
+  // Stable id for the custom copy of a built-in, so edits round-trip across
+  // refreshes via the same ?edit=<builtinId> URL.
+  const forkIdFor = (builtinId: string) => `custom-of-${builtinId}`;
+
   // Load a lesson into the editor when arriving via /author?edit=<id>.
+  // Gated on hydration so a saved fork/copy in localStorage is found first.
   useEffect(() => {
+    if (!hydrated) return;
     if (!editParam || loadedFor.current === editParam) return;
     const builtin = getLesson(editParam);
-    const own = customLessons.find((l) => l.id === editParam);
-    const lesson = builtin ?? own;
+    // Prefer an existing edit: your own lesson by that id, OR a saved fork of the
+    // built-in. Only fall back to the pristine built-in if no edit exists yet.
+    const own =
+      customLessons.find((l) => l.id === editParam) ??
+      (builtin ? customLessons.find((l) => l.id === forkIdFor(editParam)) : undefined);
+    const lesson = own ?? builtin;
     if (!lesson) return;
     loadedFor.current = editParam;
     const loaded = lessonToDrafts(lesson);
@@ -275,13 +303,17 @@ function AuthorEditor() {
     setIdx(0);
     setSelectedId(null);
     if (own) {
+      // Editing a saved lesson (a fresh custom one, or a saved fork of a built-in).
       setTitle(own.title);
-      setEditingOwnId(own.id); // update in place
+      setEditingOwnId(own.id);
+      setForkedFromBuiltin(builtin ? editParam : null);
     } else {
-      setTitle(`${lesson.title} (edited)`); // forking a built-in
+      // First time editing a pristine built-in → next Save forks a copy.
+      setTitle(`${lesson.title} (edited)`);
       setEditingOwnId(null);
+      setForkedFromBuiltin(editParam);
     }
-  }, [editParam, customLessons]);
+  }, [editParam, customLessons, hydrated]);
 
   const cur = scenarios[idx];
 
@@ -463,22 +495,38 @@ function AuthorEditor() {
   };
 
   // ---- save / export / import ----
-  // forSave keeps the existing id when updating an own lesson in place; test-play
-  // and fresh saves get a new id.
-  const buildLesson = useCallback((forSave = false): Lesson => ({
-    id: forSave && editingOwnId ? editingOwnId : nid("custom"),
-    title: title.trim() || "My Lesson",
-    description: "Custom lesson",
-    difficulty: "beginner",
-    category: "custom",
-    steps: scenarios.map((d) => draftToStep(d)),
-  }), [title, scenarios, editingOwnId]);
+  // Id rules for a save:
+  //  • already-own lesson  → keep its id (update in place)
+  //  • fork of a built-in  → STABLE `custom-of-<builtinId>` so it round-trips
+  //  • brand-new lesson    → fresh random id
+  // test-play / fresh saves of a new lesson get a new id.
+  const buildLesson = useCallback((forSave = false): Lesson => {
+    const id = forSave
+      ? editingOwnId ?? (forkedFromBuiltin ? forkIdFor(forkedFromBuiltin) : nid("custom"))
+      : nid("custom");
+    const base = forkedFromBuiltin ? getLesson(forkedFromBuiltin) : undefined;
+    return {
+      id,
+      title: title.trim() || "My Lesson",
+      description: base?.description ?? "Custom lesson",
+      difficulty: base?.difficulty ?? "beginner",
+      category: base?.category ?? "custom",
+      steps: scenarios.map((d) => draftToStep(d)),
+    };
+  }, [title, scenarios, editingOwnId, forkedFromBuiltin]);
 
   const onSave = () => {
     const lesson = buildLesson(true);
     saveCustomLesson(lesson);
+    const wasUpdate = !!editingOwnId;
     setEditingOwnId(lesson.id); // subsequent saves now update this lesson in place
-    toast(editingOwnId ? `Updated "${lesson.title}"` : `Saved "${lesson.title}" — find it on the Learn page`);
+    toast(
+      wasUpdate
+        ? `Updated "${lesson.title}"`
+        : forkedFromBuiltin
+          ? `Saved your copy of "${lesson.title}" — reopens here, and lives under Your Lessons`
+          : `Saved "${lesson.title}" — find it under Your Lessons on the Learn page`
+    );
   };
   const onTest = () => setTestLesson(buildLesson());
   const onExport = () => {
@@ -635,6 +683,15 @@ function AuthorEditor() {
 
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Lesson title"
           className="w-full rounded-xl border-2 border-[rgba(20,60,35,.12)] px-3 py-2 font-[Fredoka] font-bold text-lg mb-3" />
+
+        {/* Fork notice — editing a built-in saves to YOUR copy, not the original. */}
+        {forkedFromBuiltin && (
+          <div className="rounded-xl bg-[#fff8e6] border border-[#f0c860] px-3 py-2 mb-3 text-[12px] font-semibold text-[#7a5a00]">
+            {editingOwnId
+              ? <>Editing <b>your copy</b> of a built-in lesson. <b>Update lesson</b> saves your changes here — find it under <b>Your Lessons</b> on the Learn page. The original built-in stays unchanged.</>
+              : <>You're editing a <b>built-in</b> lesson. Built-ins can't be overwritten — <b>Save my copy</b> makes your own editable version (it reopens here next time and lives under <b>Your Lessons</b>).</>}
+          </div>
+        )}
 
         {/* Undo / Redo (whole-lesson history). Stays clearly visible even when
             disabled (dimmed text, not near-invisible). */}
@@ -986,7 +1043,7 @@ function AuthorEditor() {
                 disabled={scenarios.length <= 1}
                 className="rounded-xl bg-white border-2 border-[#E0463B] text-[#E0463B] font-extrabold text-sm py-2.5 cursor-pointer disabled:opacity-35 disabled:cursor-default"
               >🗑 Delete Step</button>
-              <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer col-span-2">💾 {editingOwnId ? "Update" : "Save"} lesson</button>
+              <button onClick={onSave} className="rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer col-span-2">💾 {editingOwnId ? "Update lesson" : forkedFromBuiltin ? "Save my copy" : "Save lesson"}</button>
               <button onClick={onExport} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Export JSON</button>
               <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] font-bold text-sm py-2.5 cursor-pointer">Import JSON</button>
               <input ref={fileRef} type="file" accept="application/json" onChange={onImport} className="hidden" />
