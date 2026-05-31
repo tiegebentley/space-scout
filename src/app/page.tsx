@@ -112,6 +112,16 @@ export default function HomePage() {
               </div>
             </Link>
           )}
+
+          {/* Manage Users — master only */}
+          {can("roles:manage") && (
+            <Link href="/admin" className="block">
+              <div className="bg-white text-[#16241c] rounded-2xl p-5 shadow-lg border border-[rgba(20,60,35,.1)] active:translate-y-[2px] transition-transform cursor-pointer">
+                <h2 className="font-[Fredoka] font-semibold text-xl text-[#16241c]">Manage Users</h2>
+                <p className="text-sm font-semibold text-[#5d6f63] mt-0.5">Set who&apos;s a coach, player, or master</p>
+              </div>
+            </Link>
+          )}
         </div>
 
         <p className="text-center text-[10px] font-bold text-[#5d6f63]/60 mt-6">
