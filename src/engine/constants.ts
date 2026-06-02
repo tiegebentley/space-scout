@@ -82,14 +82,14 @@ export const DEFAULT_USER_ROLE: Record<string, string> = {
 
 // Jersey numbers by role key
 export const JERSEY_NUMBERS: Record<string, number> = {
-  gk: 1, hold: 6, lw: 7, rw: 11, fwd: 10, lcm: 8, rcm: 10,
+  gk: 1, hold: 6, lw: 7, rw: 7, fwd: 10, lcm: 8, rcm: 10,
 };
 
 // Human-readable role names + zone box colors (shared by the rule editor and the
 // on-pitch draw tool).
 export const ROLE_LABELS: Record<string, string> = {
   gk: "Goalkeeper", hold: "Holding Mid (6)", lw: "Left Wing (7)",
-  rw: "Right Wing (11)", fwd: "Forward (10)", lcm: "Left CM (8)", rcm: "Right CM (10)",
+  rw: "Right Wing (7)", fwd: "Forward (10)", lcm: "Left CM (8)", rcm: "Right CM (10)",
 };
 
 export const ZONE_COLORS: Record<string, string> = {

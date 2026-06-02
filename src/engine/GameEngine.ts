@@ -68,6 +68,10 @@ export class GameEngine {
   // When true, a dead ball won't be taken until you step into the objective zone
   // (the "enter-zone" start trigger). Set in setRestart, cleared once you enter.
   private waitingForZoneStart = false;
+  // True once the ball has been received in the receiveInZone target box (by the
+  // objective's role). The renderer hides the highlight box once this is set; it
+  // clears on resetRep so the box reappears for the next rep.
+  private receivedInZone = false;
   private restart: Restart | null = null;
   private firstKickoff = true;
   private countdownPhase: "3" | "2" | "1" | "GO" | null = null;
@@ -475,6 +479,9 @@ export class GameEngine {
   // canvas highlight a receiveInZone target box so the player can see where to
   // show for the ball.
   get objective(): MatchConfig["objective"] { return this.config.objective; }
+  // Public for the renderer: has the ball been received in the objective box?
+  // When true the highlight box is hidden (its job is done for this rep).
+  get hasReceivedInZone(): boolean { return this.receivedInZone; }
 
   // Is the player you control standing inside the receiveInZone objective box?
   // Used by the "enter-zone" start trigger to know when to take the ball.
@@ -641,6 +648,7 @@ export class GameEngine {
   // a successful rep or when the per-rep timer expires.
   resetRep() {
     if (!this.running) return;
+    this.receivedInZone = false; // fresh rep → show the highlight box again
     this.ball.flying = false;
     this.ball.owner = null;
     this.ball.launchedBy = null;
@@ -942,6 +950,16 @@ export class GameEngine {
       x: p.x,
       y: p.y,
     });
+    // Mirror the scenarioObjective receiveInZone check so the renderer can hide
+    // the highlight box the moment the ball is received in it (by the objective's
+    // role). Cleared on resetRep so each rep gets a fresh box.
+    const obj = this.config.objective;
+    if (obj && obj.type === "receiveInZone" && this.roleKeyOf(p) === obj.role) {
+      const z = obj.zone;
+      if (p.x >= z.x && p.x <= z.x + z.w && p.y >= z.y && p.y <= z.y + z.h) {
+        this.receivedInZone = true;
+      }
+    }
     this.emitActionUpdate();
   }
 
@@ -1739,6 +1757,32 @@ export class GameEngine {
     const goalY = carrier.side === "us" ? TOP : BOT;
     const distToGoal = Math.abs(carrier.y - goalY);
     const enemies = this.enemiesOf(carrier.side);
+
+    // ===== GOAL-LINE DECISION =====
+    // Once the carrier has dribbled right up to the opponent's goal line (byline),
+    // they must DO something — without this they keep trying to dribble forward
+    // into the corner with nowhere to go and get stuck. The angle to goal picks
+    // the action: from a wide position whip a CROSS into the box; from a central
+    // position (roughly in front of the goal frame) pull the trigger and SHOOT.
+    // Checked BEFORE the "keep dribbling" breakaway gates below so it can't be
+    // preempted. Falls through to normal logic only if the chosen action can't be
+    // executed (e.g. a cross with nobody to aim at).
+    const atGoalLine = distToGoal < BOX_H * 0.7;
+    if (atGoalLine) {
+      const lateral = Math.abs(carrier.x - W / 2);
+      // "Wide" = out past the goal frame (a crossing position); "inside" = within
+      // the goal-mouth width, a shooting angle.
+      const wide = lateral > GOAL_W / 2;
+      if (wide) {
+        if (this.tryCross(carrier)) return;
+        // No cross target available — if we're not hopelessly tight on the byline,
+        // a near-post shot is better than dribbling into the corner.
+        if (lateral < BOX_HALF_W) { this.aiShoot(carrier); return; }
+      } else {
+        this.aiShoot(carrier);
+        return;
+      }
+    }
 
     // Is there open space to advance into? Check the lane straight ahead and the
     // two flanks ahead of the carrier — if any is clear of defenders, they can

@@ -26,7 +26,10 @@ export function renderFrame(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   zonePulse++; // advance the receive-zone pulse one step per rendered frame
   drawObjectiveZone(ctx, engine);
   if (engine.showZoneEditor) drawWingerZones(ctx, engine);
-  drawZoneRules(ctx, engine);
+  // Zone-rule boundary boxes are an authoring aid — hidden during live play so the
+  // pitch stays clean. The rules still fully govern movement (clampToZoneRules /
+  // roamInZone in the engine); only their visual overlay is gated to the editor.
+  if (engine.showZoneEditor) drawZoneRules(ctx, engine);
   drawPassLane(ctx, engine);
   drawKeepers(ctx, engine);
   drawOutfield(ctx, engine);
@@ -45,6 +48,8 @@ let zonePulse = 0;
 function drawObjectiveZone(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   const obj = engine.objective;
   if (!obj || obj.type !== "receiveInZone") return;
+  // Once the ball is received in the box, the box has done its job — hide it.
+  if (engine.hasReceivedInZone) return;
   const z = obj.zone;
   const cx = z.x + z.w / 2, cy = z.y + z.h / 2;
 
