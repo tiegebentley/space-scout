@@ -154,6 +154,15 @@ export class GameEngine {
     return p.id.replace("us-", "").replace("them-", "");
   }
 
+  // First teammate on `team` whose role key matches `role` (GK included). Used by
+  // restart logic to pick takers/receivers by position (e.g. the winger takes the
+  // corner, the #6 receives the kickoff). Returns null if that role isn't on the
+  // pitch in the current format.
+  private teammateByRole(team: "us" | "them", role: string): Player | null {
+    const arr = team === "us" ? this.teamUs : this.teamThem;
+    return arr.find((p) => this.roleKeyOf(p) === role) ?? null;
+  }
+
   // Is a zone rule's condition active right now, from the rule's team's POV?
   private zoneRuleActive(rule: ZoneRule): boolean {
     const when = rule.when ?? "always";
@@ -718,7 +727,20 @@ export class GameEngine {
     };
     this.emitPill(labels[r.type] || "Restart", r.team);
 
-    const taker = this.nearestTeammateTo(r.team, r.x, r.y, true);
+    // Pick the taker by restart type so the right player stands over the ball:
+    //  • goal kick → the goalkeeper plays it out
+    //  • corner    → the winger on the side the ball went out (lw on the left,
+    //                rw on the right), falling back to the nearer teammate
+    //  • everything else → the nearest teammate to the spot
+    let taker: Player | null;
+    if (r.type === "goalkick") {
+      taker = (r.team === "us" ? this.gkUs : this.gkThem) ?? this.nearestTeammateTo(r.team, r.x, r.y, true);
+    } else if (r.type === "corner") {
+      const wingRole = r.x < W / 2 ? "lw" : "rw";
+      taker = this.teammateByRole(r.team, wingRole) ?? this.nearestTeammateTo(r.team, r.x, r.y, true);
+    } else {
+      taker = this.nearestTeammateTo(r.team, r.x, r.y, true);
+    }
     r.taker = taker || undefined;
     if (taker) {
       taker.x = clamp(r.x, L, R);
@@ -772,10 +794,30 @@ export class GameEngine {
           p.y = clamp(r.y - dir * rand(80, 160), TOP + 20, BOT - 20);
         }
       } else if (r.type === "corner") {
-        // On corners: get into the box
-        const boxY = r.team === "us" ? TOP + 60 : BOT - 60;
-        p.x = clamp(GX0 + rand(-40, GOAL_W + 40), L + 30, R - 30);
-        p.y = clamp(boxY + rand(-30, 30), TOP + 20, BOT - 20);
+        // On corners give the attacking side a real shape around the taker so
+        // there's support, not a random scatter. The opp goal line is r.team's
+        // attacking end; the corner is taken from the near corner at r.x.
+        const goalY = r.team === "us" ? TOP : BOT;
+        const nearPost = r.x < W / 2;                 // which side the corner is on
+        const role = this.roleKeyOf(p);
+        if (role === "hold") {
+          // #6 supports SHORT — a few steps off the taker for the give-and-go.
+          p.x = clamp(r.x + (nearPost ? 70 : -70), L + 24, R - 24);
+          p.y = clamp(goalY - dir * 70, TOP + 20, BOT - 20);
+        } else if (role === "fwd") {
+          // Striker attacks the goal — central, right in front of the net.
+          p.x = clamp(W / 2 + rand(-20, 20), GX0, GX1);
+          p.y = clamp(goalY - dir * 36, TOP + 16, BOT - 16);
+        } else if (role === "lw" || role === "rw") {
+          // The OTHER winger holds the FAR post (opposite the taker's corner).
+          p.x = clamp(nearPost ? GX1 + 24 : GX0 - 24, L + 24, R - 24);
+          p.y = clamp(goalY - dir * 30, TOP + 16, BOT - 16);
+        } else {
+          // Any other role (e.g. 7v7 mids): get into the box.
+          const boxY = goalY - dir * 60;
+          p.x = clamp(GX0 + rand(-40, GOAL_W + 40), L + 30, R - 30);
+          p.y = clamp(boxY + rand(-30, 30), TOP + 20, BOT - 20);
+        }
       } else {
         // Kickoff: go to home positions
         const h = this.homeXY(p.side, p.home);
@@ -873,30 +915,58 @@ export class GameEngine {
 
   private resumeFromRestart() {
     this.gstate = "live";
+    const type = this.restart?.type;
     const taker = this.restart?.taker ?? (this.poss === "us" ? this.mates[0] : this.opps[0]);
-    const wasForced = !!this.config.scenarioSetup?.forcedRestart && this.restart?.type !== "kickoff";
     this.giveBall(taker, true);
     this.passCooldown = Math.round(30 / this.PACE);
     this.emitPill(this.poss === "us" ? "Your ball" : "Reds attacking", this.poss);
     this.restart = null;
     this.emit({ type: "stateChange", state: "live" });
 
-    // A throw-in / restart begins with a THROW to a teammate, not a dribble. In a
-    // scenario whose objective names a receiver role (e.g. "#6 receives in the
-    // zone"), deliver to that teammate so the drill starts the way it's taught.
-    if (wasForced && taker) {
-      const target = this.restartReceiver(taker);
+    // Restarts begin with a PASS, not a dribble — corners, goal kicks and
+    // kickoffs all play a first ball to a teammate. We skip the auto-pass only
+    // when the HUMAN is the taker, so they make the pass themselves (they keep
+    // the ball and choose). The AI taker delivers to the type-appropriate
+    // receiver below.
+    if (taker && taker !== this.you) {
+      const target = this.restartReceiver(taker, type);
       if (target && target !== taker) this.doPass(taker, target);
     }
   }
 
-  // The teammate a forced restart should be thrown to: the objective's receiver
-  // role if set and present on the taker's team; otherwise null (taker keeps it).
-  private restartReceiver(taker: Player): Player | null {
-    const role = (this.config.objective as { role?: string } | undefined)?.role;
-    if (!role) return null;
+  // Who an AI-taken restart should be played to:
+  //  • a scenario objective's named receiver role always wins (drill intent)
+  //  • kickoff  → pass back to the #6 (hold) to start the build-up
+  //  • goalkick → the most open outfield teammate (play out from the back)
+  //  • corner   → the striker (fwd) attacking the goal, else the supporting #6
+  //  • throw-in / other → the most open teammate
+  // Returns null when there's no sensible target (taker keeps it).
+  private restartReceiver(taker: Player, type?: Restart["type"]): Player | null {
     const team = taker.side === "us" ? this.teamUs : this.teamThem;
-    return team.find((p) => p !== taker && !p.gk && this.roleKeyOf(p) === role) ?? null;
+
+    // Scenario-named receiver (e.g. "#6 receives in the zone") takes precedence.
+    const objRole = (this.config.objective as { role?: string } | undefined)?.role;
+    if (objRole) {
+      const named = team.find((p) => p !== taker && !p.gk && this.roleKeyOf(p) === objRole);
+      if (named) return named;
+    }
+
+    const byRole = (role: string) =>
+      team.find((p) => p !== taker && this.roleKeyOf(p) === role) ?? null;
+    const mostOpen = () => {
+      let best: Player | null = null, bestAv = -Infinity;
+      for (const p of team) {
+        if (p === taker || p.gk) continue;
+        const av = this.availability(p, taker);
+        if (av > bestAv) { bestAv = av; best = p; }
+      }
+      return best;
+    };
+
+    if (type === "kickoff") return byRole("hold") ?? mostOpen();
+    if (type === "corner") return byRole("fwd") ?? byRole("hold") ?? mostOpen();
+    // goalkick, throwin, and anything else: play to the most open teammate.
+    return mostOpen();
   }
 
   // ---------- Ball possession ----------
