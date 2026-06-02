@@ -43,6 +43,9 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
   // further receives that rep are ignored.
   const repScoredRef = useRef(false);
   const repScoredCountRef = useRef(0);
+  // Stable target for the run (e.g. 4 receives). Read from the tracker's initial
+  // state so onEvent can stay a stable callback (no obj.target in its deps).
+  const targetRef = useRef(tracker.current.state.target);
   const [repLeft, setRepLeft] = useState(repSeconds);
   // Engine live/dead state. The rep clock only runs while LIVE, so the dead-ball
   // "get set" pause (restartDelaySec) doesn't eat into the rep's play time.
@@ -69,21 +72,29 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
       return;
     }
 
-    // Rep-based: progress = number of reps that scored. The first receive in a
-    // rep credits it (repScoredRef); the rep then plays on for its full time and
-    // further receives are ignored. We DON'T reset on score — the per-rep timer
-    // (below) governs the reset, so you get your designated play time after the
-    // receive.
-    if (next.progress > progressRef.current && !repScoredRef.current) {
-      repScoredRef.current = true;
-      repScoredCountRef.current += 1;
+    // Rep-based: progress = number of reps that SCORED. We detect the receive
+    // DIRECTLY off the possession event here rather than from the pure tracker —
+    // the tracker counts raw receives and freezes once it hits its own target
+    // (target=4), which would stop crediting reps after a few raw receptions. The
+    // first receive in a rep credits it (repScoredRef); the rep then plays on for
+    // its full time and further receives are ignored. The per-rep timer (below)
+    // governs the reset, so you get your designated play time after the receive.
+    if (
+      ev.type === "possession" && !repScoredRef.current &&
+      objective.type === "receiveInZone" && ev.toRole === objective.role
+    ) {
+      const z = objective.zone;
+      const inZone = ev.x >= z.x && ev.x <= z.x + z.w && ev.y >= z.y && ev.y <= z.y + z.h;
+      if (inZone) {
+        repScoredRef.current = true;
+        repScoredCountRef.current += 1;
+      }
     }
-    progressRef.current = next.progress;
     const reps = repScoredCountRef.current;
-    const done = reps >= next.target;
-    setObj({ ...next, progress: reps, done });
+    const done = reps >= targetRef.current;
+    setObj((prev) => ({ ...prev, progress: reps, done }));
     if (done && !completedRef.current) { completedRef.current = true; onComplete(); }
-  }, [onComplete, repActive]);
+  }, [onComplete, repActive, objective]);
 
   // Objective + setup must be on the config the engine reads.
   const cfgRef = useRef<Partial<MatchConfig>>({ ...matchConfig, objective });
@@ -153,19 +164,23 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
         </div>
       </div>
 
-      <div className="relative mx-auto max-w-[440px]">
-        <GameCanvas engineRef={engine} canvasRef={canvasRef} className="w-full rounded-2xl shadow-sm" />
-        {!started && !obj.done && (
-          <button onClick={start} className="absolute inset-0 m-auto h-fit w-fit rounded-xl bg-[#2B8A4E] text-white font-[Fredoka] font-bold text-lg px-6 py-3 shadow-lg cursor-pointer">▶ Start</button>
+      {/* Field at full game size. On large screens the controls sit beside the
+          pitch (like the live game); on small screens they stack underneath. */}
+      <div className="lg:grid lg:grid-cols-[1fr_222px] lg:gap-3 lg:items-start">
+        <div className="relative w-full">
+          <GameCanvas engineRef={engine} canvasRef={canvasRef} className="w-full rounded-2xl shadow-sm" />
+          {!started && !obj.done && (
+            <button onClick={start} className="absolute inset-0 m-auto h-fit w-fit rounded-xl bg-[#2B8A4E] text-white font-[Fredoka] font-bold text-lg px-6 py-3 shadow-lg cursor-pointer">▶ Start</button>
+          )}
+        </div>
+
+        {started && !obj.done && (
+          <div className="flex items-center justify-between mt-3 lg:mt-0 lg:flex-col lg:items-stretch lg:gap-4">
+            <Joystick engineRef={engine} />
+            <ActionButtons canPass={canPass} canShoot={canShoot} onPass={doPass} onShoot={doShoot} layout="sidebar" />
+          </div>
         )}
       </div>
-
-      {started && !obj.done && (
-        <div className="flex items-center justify-between mt-3">
-          <Joystick engineRef={engine} />
-          <ActionButtons canPass={canPass} canShoot={canShoot} onPass={doPass} onShoot={doShoot} layout="sidebar" />
-        </div>
-      )}
 
       {obj.done && (
         <div className="mt-3 rounded-xl bg-[#2B8A4E14] border border-[#2B8A4E55] px-4 py-3 text-center">

@@ -636,7 +636,7 @@ export class GameEngine {
       // build-up half. setRestart() normalizes type/team/point + sideline snap.
       const x = setup.restartX ?? (setup.forcedRestart === "throwin" ? L + 18 : W / 2);
       const y = setup.restartY ?? (team === "us" ? H * 0.62 : H * 0.38);
-      this.setRestart({ type: setup.forcedRestart, team, x, y });
+      this.setRestart({ type: setup.forcedRestart, team, x, y }, true);
     } else {
       this.setRestart({ type: "kickoff", team: "us", x: W / 2, y: H / 2 });
     }
@@ -660,12 +660,17 @@ export class GameEngine {
     this.openScenarioOrKickoff();
   }
 
-  private setRestart(r: Restart) {
-    // Scenario override: force every NON-kickoff dead ball to a configured type
-    // (e.g. "all restarts are throw-ins"). Kickoffs (first whistle / post-goal)
-    // are left alone. Throw-ins snap to the nearer touchline.
+  // `forceScenario` is true ONLY for the drill open/reset (openScenarioOrKickoff),
+  // where a scenario's forcedRestart should shape the delivery so the drill loops
+  // (e.g. "always restart with a throw-in"). A GENUINE out-of-bounds during play
+  // (the ball actually crossing a line) calls setRestart WITHOUT it, so the real
+  // restart type stands: a throw-in stays where it went out, a ball over your own
+  // goal line is a corner to the other team — never coerced into the drill type.
+  private setRestart(r: Restart, forceScenario = false) {
+    // Scenario override: force the configured restart type for the drill reset
+    // only. Kickoffs (first whistle / post-goal) are always left alone.
     const setup = this.config.scenarioSetup;
-    const forced = setup?.forcedRestart;
+    const forced = forceScenario ? setup?.forcedRestart : undefined;
     const hasFixedPoint = forced && setup?.restartX != null && setup?.restartY != null;
     if (forced && r.type !== "kickoff" && forced !== r.type) {
       r = { ...r, type: forced };

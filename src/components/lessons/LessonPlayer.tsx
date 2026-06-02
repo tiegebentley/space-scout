@@ -111,7 +111,7 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   return (
     <main className="flex-1 flex flex-col items-center p-4">
       {/* Wider while showing a scenario so the field + side panel sit side by side */}
-      <div className={clsx("w-full", step.kind === "scenario" ? "max-w-5xl" : "max-w-xl")} data-step={step.kind}>
+      <div className={clsx("w-full", step.kind === "scenario" || step.kind === "live-scenario" ? "max-w-5xl" : "max-w-xl")} data-step={step.kind}>
         {/* Header + progress */}
         <div className="flex items-center justify-between mb-2">
           <Link href="/learn" className="text-xs font-extrabold text-[#5d6f63] hover:underline">← Lessons</Link>
