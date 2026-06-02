@@ -30,13 +30,15 @@ const MATRIX: Record<Role, Permission[]> = {
     "lesson:publish", "roles:manage",
     "play:matchSetup", "play:zoneRules", "play:savePresets",
   ],
+  // Coaches & players can PLAY any configured game but cannot change its setup —
+  // format/position/opponent/difficulty/length and zone rules are fixed by the
+  // Admin (master) who builds the course. The only in-game control they keep is
+  // speed (not permission-gated). matchSetup/zoneRules/savePresets are therefore
+  // master-only.
   coach: [
     "author:open", "lesson:createCustom", "lesson:editOwnCustom",
-    "play:matchSetup", "play:zoneRules", "play:savePresets",
   ],
-  player: [
-    "play:matchSetup", "play:zoneRules", "play:savePresets",
-  ],
+  player: [],
 };
 
 export function can(role: Role | null | undefined, perm: Permission): boolean {

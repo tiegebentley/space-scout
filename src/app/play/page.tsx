@@ -8,12 +8,13 @@ import { clsx } from "clsx";
 import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS } from "@/engine/constants";
 import { MatchSetupControls } from "@/components/game/MatchSetupControls";
 import { BUILTIN_PRESETS } from "@/data/zonePresets";
+import { useAuth } from "@/lib/auth/AuthProvider";
 import type { ZoneRule, RulePreset, ZoneCondition, ZoneMovement, ZoneAction, ZoneOffBall } from "@/types/game";
 
 const ROLE_LABELS: Record<string, string> = {
   hold: "Holding Mid (6)",
   lw: "Left Wing (7)",
-  rw: "Right Wing (11)",
+  rw: "Right Wing (7)",
   fwd: "Forward (10)",
   lcm: "Left CM (8)",
   rcm: "Right CM (10)",
@@ -30,6 +31,11 @@ function hydrateRules(rules: Omit<ZoneRule, "id">[]): ZoneRule[] {
 }
 
 export default function PlayPage() {
+  const { can } = useAuth();
+  // Coaches & players play the Admin-configured game but can't change its setup
+  // (format/position/opponent/length/difficulty) or its zone rules — those are
+  // locked to the master. Speed stays editable for everyone (in MatchView).
+  const canConfigure = can("play:matchSetup");
   const [selecting, setSelecting] = useState(true);
   const [zoneRules, setZoneRules] = useState<ZoneRule[]>([]);
   // Undo/redo history for zone edits. Each entry is a full snapshot of zoneRules.
@@ -353,15 +359,23 @@ export default function PlayPage() {
           &larr; Home
         </Link>
 
-        <h1 className="font-[Fredoka] font-bold text-2xl text-[#16241c] mb-6">Choose your match</h1>
+        <h1 className="font-[Fredoka] font-bold text-2xl text-[#16241c] mb-2">Choose your match</h1>
+        {!canConfigure && (
+          <p className="text-xs font-bold text-[#8a5a00] bg-[#fff3e0] border border-[#f0b657] rounded-lg px-3 py-2 mb-5">
+            🔒 Your coach set up this game. You can change the speed once you start — tap <span className="font-extrabold">Start Match</span> to play.
+          </p>
+        )}
 
         {/* Match settings (shared with the lesson author's Scenario/Game steps) */}
         <div className="mb-6">
-          <MatchSetupControls value={matchConfig} onChange={setMatchConfig} />
+          <MatchSetupControls value={matchConfig} onChange={setMatchConfig} disabled={!canConfigure} />
         </div>
 
-        {/* Zone Rules */}
-        <div className="mb-6">
+        {/* Zone Rules — locked (greyed out) for coach/player; master-only setup. */}
+        <div
+          className={clsx("mb-6", !canConfigure && "opacity-50 pointer-events-none select-none")}
+          aria-disabled={!canConfigure}
+        >
           <p className="text-xs font-extrabold tracking-wide text-[#5d6f63] mb-2.5">ZONE RULES</p>
 
           {/* Draw-template controls — what the next box drawn on the pitch is for */}

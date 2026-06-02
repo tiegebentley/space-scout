@@ -19,22 +19,29 @@ const DURATIONS = [
   { ms: 300000, label: "5:00" },
 ];
 const ROLE_LABELS: Record<string, string> = {
-  hold: "Holding Mid (6)", lw: "Left Wing (7)", rw: "Right Wing (11)",
+  hold: "Holding Mid (6)", lw: "Left Wing (7)", rw: "Right Wing (7)",
   fwd: "Forward (10)", lcm: "Left CM (8)", rcm: "Right CM (10)",
 };
 
 interface Props {
   value: Partial<MatchConfig>;
   onChange: (patch: Partial<MatchConfig>) => void;
+  // When true the controls are read-only — greyed out and non-interactive. Used
+  // for coach/player roles, who play the Admin-configured game but can't change
+  // its setup (they still control speed, handled elsewhere).
+  disabled?: boolean;
 }
 
-export function MatchSetupControls({ value, onChange }: Props) {
+export function MatchSetupControls({ value, onChange, disabled = false }: Props) {
   const format = value.format || "5v5";
   const roleKeys = Object.keys(FORMATIONS[format] || FORMATIONS["5v5"]);
   const selectedRole = value.userRole || DEFAULT_USER_ROLE[format];
 
   return (
-    <div className="space-y-5">
+    <div
+      className={clsx("space-y-5", disabled && "opacity-50 pointer-events-none select-none")}
+      aria-disabled={disabled}
+    >
       {/* Format */}
       <div>
         <p className="text-xs font-extrabold tracking-wide text-[#5d6f63] mb-2.5">FORMAT</p>
