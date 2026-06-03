@@ -1926,6 +1926,16 @@ export class GameEngine {
 
     const team = carrier.side === "us" ? this.teamUs : this.teamThem;
     const dir = this.attackDir(carrier.side);
+    const pressure = this.nearestEnemy(carrier.x, carrier.y, carrier.side);
+
+    // Under pressure, LOOK FORWARD FIRST. The tighter the press, the more we
+    // reward a forward option (and the harder we penalise going backward) — as
+    // long as the receiver is actually open. A wide-open forward pass should beat
+    // a wide-open backward one; only when no forward option is safe do we settle
+    // for a square/back ball.
+    const pressed = pressure < 80;                 // a defender is closing in
+    const fwdWeight = pressed ? 0.6 : 0.42;        // forward matters more under pressure
+    const avWeight = pressed ? 0.4 : 0.58;
 
     // Build outfield pass options. The GK is deliberately EXCLUDED here — the
     // keeper is only ever reachable via the gated back-pass block below, never
@@ -1934,14 +1944,16 @@ export class GameEngine {
     for (const p of team) {
       if (p === carrier || p.gk) continue;
       const av = this.availability(p, carrier);
-      const forward = ((carrier.y - p.y) * dir) / H;
-      // Reward forward options, penalize backward ones — bias the attack upfield.
-      const sc = av * 0.55 + clamp(forward + 0.3, 0, 1) * 0.45;
+      // Signed forward progress, -1..1 (clamped): >0 toward goal, <0 backward.
+      const forward = clamp(((carrier.y - p.y) * dir) / (H * 0.5), -1, 1);
+      // Forward reward is a 0..1 ramp; a backward pass earns a real penalty so a
+      // safe forward ball wins. The penalty grows when we're under pressure.
+      const fwdReward = forward > 0 ? forward : forward * (pressed ? 1.4 : 0.8);
+      const sc = av * avWeight + clamp(fwdReward * 0.5 + 0.5, 0, 1) * fwdWeight;
       opts.push({ p, s: av, score: sc });
     }
     opts.sort((a, b) => b.score - a.score);
 
-    const pressure = this.nearestEnemy(carrier.x, carrier.y, carrier.side);
     const best = opts[0];
     if (!best) return;
 
@@ -1949,30 +1961,34 @@ export class GameEngine {
     const distToGoal = Math.abs(carrier.y - goalY);
     const enemies = this.enemiesOf(carrier.side);
 
-    // ===== GOAL-LINE DECISION =====
-    // Once the carrier has dribbled right up to the opponent's goal line (byline),
-    // they must DO something — without this they keep trying to dribble forward
-    // into the corner with nowhere to go and get stuck. The angle to goal picks
-    // the action: from a wide position whip a CROSS into the box; from a central
-    // position (roughly in front of the goal frame) pull the trigger and SHOOT.
-    // Checked BEFORE the "keep dribbling" breakaway gates below so it can't be
-    // preempted. Falls through to normal logic only if the chosen action can't be
-    // executed (e.g. a cross with nobody to aim at).
-    const atGoalLine = distToGoal < BOX_H * 0.7;
-    if (atGoalLine) {
-      const lateral = Math.abs(carrier.x - W / 2);
-      // "Wide" = out past the goal frame (a crossing position); "inside" = within
-      // the goal-mouth width, a shooting angle.
-      const wide = lateral > GOAL_W / 2;
-      if (wide) {
+    // ===== ATTACKING INTENT (wide carriers + the byline) =====
+    // A wide carrier in the attacking third should attack the GOAL, not run into
+    // the corner. As soon as they get level with the edge of the box, look to
+    // CROSS into the box, then SHOOT if there's an angle; only if neither is on do
+    // they fall through to dribble (and they're steered to cut INSIDE toward goal,
+    // not out to the touchline — see carryLaneX). Centrally, a shot at the byline
+    // still applies. Checked BEFORE the "keep dribbling" gates so it can't be
+    // preempted.
+    const lateral = Math.abs(carrier.x - W / 2);
+    const wide = lateral > GOAL_W / 2;        // out past the goal frame
+    const inAttackingThird = distToGoal < (H / 3);
+    const nearBox = distToGoal < BOX_H * 1.6;  // level with / inside the box depth
+
+    if (wide && inAttackingThird) {
+      // From wide in the final third, a cross is the primary intent.
+      if (nearBox && this.tryCross(carrier)) return;
+      // In a shooting angle and close enough? Have a go.
+      if (lateral < BOX_HALF_W && this.shouldShoot(carrier, true)) { this.aiShoot(carrier); return; }
+      // Right on the byline with no cross/shot on: a near-post shot beats the
+      // corner. Otherwise fall through — carryLaneX will pull them inside.
+      if (distToGoal < BOX_H * 0.7) {
         if (this.tryCross(carrier)) return;
-        // No cross target available — if we're not hopelessly tight on the byline,
-        // a near-post shot is better than dribbling into the corner.
         if (lateral < BOX_HALF_W) { this.aiShoot(carrier); return; }
-      } else {
-        this.aiShoot(carrier);
-        return;
       }
+    } else if (distToGoal < BOX_H * 0.7) {
+      // Central carrier at the byline → shoot.
+      this.aiShoot(carrier);
+      return;
     }
 
     // Is there open space to advance into? Check the lane straight ahead and the
