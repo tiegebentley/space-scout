@@ -382,7 +382,7 @@ function drawWingerZones(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   ctx.fillStyle = "rgba(46,111,224,.8)";
   ctx.font = "bold 11px Nunito, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("#7 LW", (lwX0 + lwX1) / 2, TOP + 16);
+  ctx.fillText("#11 LW", (lwX0 + lwX1) / 2, TOP + 16);
   ctx.restore();
 
   // RW zone (blue, right side)
@@ -402,7 +402,7 @@ function drawWingerZones(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   ctx.fillStyle = "rgba(46,111,224,.8)";
   ctx.font = "bold 11px Nunito, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("#11 RW", (rwX0 + rwX1) / 2, TOP + 16);
+  ctx.fillText("#7 RW", (rwX0 + rwX1) / 2, TOP + 16);
   ctx.restore();
 }
 
