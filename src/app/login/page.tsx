@@ -9,6 +9,10 @@ function LoginInner() {
   const params = useSearchParams();
   const next = params.get("next") || "/";
 
+  // The public marketing/landing site (outside this auth-gated app). Configurable
+  // via env so the domain can change without a code edit; defaults to the live site.
+  const landingUrl = process.env.NEXT_PUBLIC_LANDING_URL || "https://thesocceriqlab.com/";
+
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -79,6 +83,13 @@ function LoginInner() {
           className="w-full mt-3 text-xs font-bold text-[#2E6FE0] hover:underline cursor-pointer">
           {mode === "login" ? "No account? Sign up (as a player)" : "Have an account? Sign in"}
         </button>
+
+        <div className="mt-4 pt-4 border-t border-[rgba(20,60,35,.1)] text-center">
+          <a href={landingUrl}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#5d6f63] hover:text-[#1F6E3D] hover:underline">
+            <span aria-hidden>←</span> Back to Soccer IQ Lab
+          </a>
+        </div>
       </div>
     </main>
   );
