@@ -13,7 +13,7 @@ import type { ZoneRule, RulePreset, ZoneCondition, ZoneMovement, ZoneAction, Zon
 
 const ROLE_LABELS: Record<string, string> = {
   hold: "Holding Mid (6)",
-  lw: "Left Wing (7)",
+  lw: "Left Wing (11)",
   rw: "Right Wing (7)",
   fwd: "Forward (10)",
   lcm: "Left CM (8)",

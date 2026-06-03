@@ -76,6 +76,10 @@ export class GameEngine {
   private firstKickoff = true;
   private countdownPhase: "3" | "2" | "1" | "GO" | null = null;
   private countdownTimer = 0;
+  // When a 3-2-1 countdown is running to restart play AFTER A GOAL, this holds the
+  // team taking the kickoff. The countdown's GO routes to kickoffKeepScore(team)
+  // instead of the first-whistle open. Null for the opening countdown.
+  private pendingKickoffTeam: "us" | "them" | null = null;
   private passCooldown = 0;
   private stealImmunity = 0;
   private recentLoser: Player | null = null;   // the specific player who just lost the ball
@@ -521,12 +525,19 @@ export class GameEngine {
           this.countdownPhase = null;
           this.emit({ type: "countdown", value: null });
           this.firstKickoff = false;
-          // Scenario steps that configure a restart (e.g. "every restart is a
-          // throw-in by us") OPEN on that restart instead of a center kickoff —
-          // so the drill begins from the situation being taught. setRestart()
-          // sets the dead-ball "get set" pause (incl. restartDelaySec); don't
-          // zero it here or the ball would be taken instantly.
-          this.openScenarioOrKickoff();
+          if (this.pendingKickoffTeam) {
+            // Post-goal restart: the conceding team kicks off after the countdown.
+            const team = this.pendingKickoffTeam;
+            this.pendingKickoffTeam = null;
+            this.kickoffKeepScore(team);
+          } else {
+            // Scenario steps that configure a restart (e.g. "every restart is a
+            // throw-in by us") OPEN on that restart instead of a center kickoff —
+            // so the drill begins from the situation being taught. setRestart()
+            // sets the dead-ball "get set" pause (incl. restartDelaySec); don't
+            // zero it here or the ball would be taken instantly.
+            this.openScenarioOrKickoff();
+          }
         } else {
           this.countdownPhase = next[this.countdownPhase]!;
           this.countdownTimer = this.countdownPhase === "GO" ? 30 : 60;
@@ -579,7 +590,11 @@ export class GameEngine {
       } else {
         this.waitingForZoneStart = false;
         if (this.restart?._pending) {
-          this.kickoffKeepScore(this.restart.team);
+          // Post-goal: after the brief celebration, run a visible 3-2-1 countdown
+          // (with the "Restarting with a kickoff" prompt already shown) before the
+          // conceding team kicks off. startKickoffCountdown stashes the team; the
+          // countdown's GO calls kickoffKeepScore.
+          this.startKickoffCountdown(this.restart.team);
         } else if (this.restart) {
           this.resumeFromRestart();
         }
@@ -1665,26 +1680,79 @@ export class GameEngine {
 
     const lineY = gk.side === "us" ? BOT - 16 : TOP + 16;
     gk.y += (lineY - gk.y) * 0.1;
+    // Track the ball's x, but NOT instantly — a smart placement into the corner
+    // should be able to beat the keeper. The lerp lags the ball so a well-placed
+    // shot leaves a real gap; a tame shot down the middle still gets covered.
     const tx = clamp(this.ball.x, GX0 + 6, GX1 - 6);
-    gk.x += (tx - gk.x) * 0.06 * Math.max(1, this.PACE * 2);
+    gk.x += (tx - gk.x) * 0.045 * Math.max(1, this.PACE * 1.6);
     gk.x = clamp(gk.x, GX0, GX1);
 
-    if (this.ball.flying && this.ball.kind === "shot" && dist(gk, this.ball) < 16) {
+    // A shot crossing the keeper's line is a save CHANCE, not an automatic save.
+    // Trigger when the ball reaches the goal line (within the keeper's diving
+    // range laterally); keeperSave then rolls the odds.
+    if (
+      this.ball.flying && this.ball.kind === "shot" &&
+      Math.abs(this.ball.y - gk.y) < 18 && Math.abs(this.ball.x - gk.x) < 110
+    ) {
       this.keeperSave(gk);
     }
   }
 
+  // A shot has reached the keeper's line — decide save vs goal by SHOT QUALITY:
+  //  • placement: the further the ball is from where the keeper is standing, the
+  //    harder to reach — a corner finish away from the keeper usually beats them.
+  //  • distance:  close-range shots give less reaction time (harder to save);
+  //    long-range efforts are easier to read.
+  //  • angle:     a tight/wide angle is a worse shooting position → easier save.
+  // A good shot to the open corner goes in most of the time; a poor-angle or
+  // long-range effort is saved ~4 out of 5. The save is never a flat certainty.
   private keeperSave(gk: Player) {
+    // Off-target shots aren't the keeper's problem — let them fly out (checkBounds
+    // turns it into a goal kick / corner). Only on-target shots are saved/scored.
+    const onTarget = this.ball.x > GX0 - 6 && this.ball.x < GX1 + 6;
+    if (!onTarget) return;
+
     this.ball.flying = false;
-    this.emitCoach(
-      gk.side === "us"
-        ? "Your keeper saves it! Quick — get open for the throw out."
-        : "Saved by the Reds keeper."
-    );
-    this.setRestart({
-      type: "goalkick", team: gk.side,
-      x: W / 2, y: gk.side === "us" ? BOT - 40 : TOP + 40,
-    });
+    const from = this.ball.shotFrom ?? { x: this.ball.x, y: gk.side === "us" ? TOP : BOT };
+
+    // Placement gap (px) the keeper must cover to where the ball crosses. The
+    // keeper comfortably covers ~26px; reach falls off out to a ~110px dive.
+    const gap = Math.abs(this.ball.x - gk.x);
+    const placement = clamp((gap - 26) / 84, 0, 1); // 0 = at the keeper, 1 = far corner
+
+    // Shot distance to goal (normalized over a full half ≈ H/2). Close = 0.
+    const goalY = gk.side === "us" ? BOT : TOP;
+    const distN = clamp(Math.abs(from.y - goalY) / (H * 0.5), 0, 1);
+
+    // Angle quality: lateral offset of the shooter from goal-center vs the goal
+    // mouth. Central (good angle) → 0; out near the post (bad angle) → 1.
+    const angleBad = clamp((Math.abs(from.x - W / 2) - GOAL_W / 2) / (W * 0.32), 0, 1);
+
+    // Base save chance: a tame, central, close shot AT the keeper is almost
+    // always saved. Good placement is the dominant beat-the-keeper factor;
+    // distance and a poor angle push the save chance back UP.
+    let saveChance =
+      0.92                       // tame shot straight at the keeper
+      - placement * 0.85         // placed away from the keeper → much likelier goal
+      + distN * 0.30             // struck from distance → easier to save
+      + angleBad * 0.28;         // poor (wide) angle → easier to save
+    saveChance = clamp(saveChance, 0.05, 0.97);
+
+    const saved = Math.random() < saveChance;
+    if (saved) {
+      this.emitCoach(
+        gk.side === "us"
+          ? "Your keeper saves it! Quick — get open for the throw out."
+          : "Saved by the Reds keeper."
+      );
+      this.setRestart({
+        type: "goalkick", team: gk.side,
+        x: W / 2, y: gk.side === "us" ? BOT - 40 : TOP + 40,
+      });
+    } else {
+      // Beaten — the shot is on target and finds the net.
+      this.scoreGoal(gk.side === "us" ? "them" : "us");
+    }
   }
 
   // ---------- AI Passing & Shooting ----------
@@ -1953,6 +2021,7 @@ export class GameEngine {
     this.ball.lastTouch = from.side;
     this.ball.kind = kind;
     this.ball.targetPlayer = toPlayer || null;
+    this.ball.shotFrom = kind === "shot" ? { x: from.x, y: from.y } : null;
     this.youHasBall = false;
     this.emitActionUpdate();
 
@@ -2096,7 +2165,9 @@ export class GameEngine {
   private scoreGoal(team: "us" | "them") {
     this.score[team]++;
     this.gstate = "celebrate";
-    this.deadTimer = Math.round(100 / this.PACE);
+    // Brief goal celebration (~1.5s, pace-independent) before the kickoff prompt
+    // + 3-2-1 countdown takes over.
+    this.deadTimer = 90;
     this.emitPill("GOAL!", team);
     this.emitCoach(
       team === "us"
@@ -2205,7 +2276,38 @@ export class GameEngine {
 
   // ---------- Match end ----------
 
+  // Post-goal: show the "restarting with a kickoff" prompt, set the teams up at
+  // their kickoff spots, then start a visible 3-2-1 countdown. The countdown's GO
+  // (in update()) calls kickoffKeepScore(team) to put the ball in play.
+  private startKickoffCountdown(team: "us" | "them") {
+    this.restart = null;
+    this.pendingKickoffTeam = team;
+    // Stand everyone in their kickoff shape now so the countdown plays over a set
+    // pitch. positionKickoff places players without putting the ball live.
+    this.positionKickoff(team);
+    this.emitPill("Restarting with a kickoff", team);
+    this.emitCoach(
+      team === "us"
+        ? "Restarting with a kickoff — get ready, here we go."
+        : "Reds restart with a kickoff — stay switched on."
+    );
+    this.gstate = "dead";
+    this.emit({ type: "stateChange", state: "dead" });
+    // Kick off the 3-2-1 overlay (same mechanism as the opening whistle).
+    this.countdownPhase = "3";
+    this.countdownTimer = 60;
+    this.emit({ type: "countdown", value: "3" });
+  }
+
   private kickoffKeepScore(team: "us" | "them") {
+    this.positionKickoff(team);
+    this.setRestart({ type: "kickoff", team, x: W / 2, y: H / 2 });
+  }
+
+  // Position both teams (and keepers) in their kickoff shape for `team` taking
+  // the kick. Pulled out of kickoffKeepScore so the post-goal countdown can set
+  // the pitch before play resumes.
+  private positionKickoff(team: "us" | "them") {
     const midY = H / 2;
     const midX = W / 2;
     const circleR = 76;
@@ -2239,7 +2341,6 @@ export class GameEngine {
     });
     this.gkUs.x = W * 0.5; this.gkUs.y = BOT - 16;
     this.gkThem.x = W * 0.5; this.gkThem.y = TOP + 16;
-    this.setRestart({ type: "kickoff", team, x: W / 2, y: H / 2 });
   }
 
   private endMatch() {

@@ -61,12 +61,12 @@ export const PLAYING_OUT_BACK_LESSON: Lesson = {
             title: "#6 — Holding Midfielder",
             text: "The connector. Drops in to receive from restarts, finds pockets of space between opponents, and links the defense to the attack. This whole lesson is about YOU. (e.g. Rodri)",
           },
-          "pob-7": {
-            title: "#7 — Left Winger",
+          "pob-11": {
+            title: "#11 — Left Winger",
             text: "Stays wide on the left touchline to stretch the field and give the #6 a forward passing option up the side. (e.g. Vinícius)",
           },
-          "pob-11": {
-            title: "#11 — Right Winger",
+          "pob-7": {
+            title: "#7 — Right Winger",
             text: "Stays wide on the right touchline, stretching the field the other way and offering a switch of play. (e.g. Saka)",
           },
           "pob-10": {

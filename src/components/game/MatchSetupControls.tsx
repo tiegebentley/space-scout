@@ -19,7 +19,7 @@ const DURATIONS = [
   { ms: 300000, label: "5:00" },
 ];
 const ROLE_LABELS: Record<string, string> = {
-  hold: "Holding Mid (6)", lw: "Left Wing (7)", rw: "Right Wing (7)",
+  hold: "Holding Mid (6)", lw: "Left Wing (11)", rw: "Right Wing (7)",
   fwd: "Forward (10)", lcm: "Left CM (8)", rcm: "Right CM (10)",
 };
 

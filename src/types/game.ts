@@ -54,6 +54,9 @@ export interface Ball {
   // turnover freeze when an interception or loose ball flips possession.
   launchedBy?: Player | null;
   onArrive: (() => void) | null;
+  // Where a shot was struck from (set on launch for kind === "shot"). Lets the
+  // keeper weigh save odds by shot distance and angle, not just placement.
+  shotFrom?: { x: number; y: number } | null;
 }
 
 export type GameState = "live" | "dead" | "celebrate";
