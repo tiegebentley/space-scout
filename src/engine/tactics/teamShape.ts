@@ -226,8 +226,10 @@ export class TeamShapeEngine {
 
         const d = dist(p, o);
         if (d < minGap && d > 0) {
-          const pFrozen = p.frozenTimer && p.frozenTimer > 0;
-          const oFrozen = o.frozenTimer && o.frozenTimer > 0;
+          // A frozen player OR a restart taker holding their spot is immovable:
+          // others get pushed off them, but they don't get dragged toward shape.
+          const pFrozen = (p.frozenTimer && p.frozenTimer > 0) || (p.restartHoldTimer && p.restartHoldTimer > 0);
+          const oFrozen = (o.frozenTimer && o.frozenTimer > 0) || (o.restartHoldTimer && o.restartHoldTimer > 0);
           if (pFrozen && oFrozen) continue;
           const push = (minGap - d) * 0.5;
           const ang = Math.atan2(p.y - o.y, p.x - o.x);

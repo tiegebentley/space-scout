@@ -952,7 +952,7 @@ export class GameEngine {
     // it — hold their spot briefly so they don't flash back inside to formation
     // the instant the ball is live. (Goal kicks/corners have their own shape.)
     if (taker && taker !== this.you && type === "throwin") {
-      taker.restartHoldTimer = 72; // ~1.2s
+      taker.restartHoldTimer = 90; // ~1.5s — play it in, then rejoin from here
     }
 
     // Restarts begin with a PASS, not a dribble — corners, goal kicks and
@@ -1415,6 +1415,9 @@ export class GameEngine {
     );
     teamShape.enforceSpacing(arr, spacingCtx);
     for (const m of arr) {
+      // Skip a restart taker holding their spot — clamping to role/zone bounds
+      // would drag them off the touchline back toward formation.
+      if (m.restartHoldTimer && m.restartHoldTimer > 0) continue;
       if (m !== this.you && !m.gk && !(m.frozenTimer && m.frozenTimer > 0)) {
         this.clampToRoleBounds(m);
         this.clampToZoneRules(m);
