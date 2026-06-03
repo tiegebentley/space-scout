@@ -18,6 +18,10 @@ export interface Player {
   backoff?: number;
   holdT?: number;
   frozenTimer?: number;
+  // Frames the restart taker should HOLD their position after taking a throw-in /
+  // kick-in, so they play from where they took it instead of instantly snapping
+  // back to their formation spot. Decrements each frame; ignored once carrying.
+  restartHoldTimer?: number;
   home: RoleConfig;
   // Roam target inside the player's zone box (engine-managed), so they use the
   // whole box instead of pinning to an edge. Re-rolled on arrival / timeout.

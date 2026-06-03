@@ -87,12 +87,14 @@ export default function HomePage() {
             </div>
           </Link>
 
-          <Link href="/drills" className="block">
-            <div className="bg-white text-[#16241c] rounded-2xl p-5 shadow-lg border border-[rgba(20,60,35,.1)] active:translate-y-[2px] transition-transform cursor-pointer">
+          {/* Tactical Drills — coming soon, greyed out & not clickable */}
+          <div className="block" aria-disabled>
+            <div className="relative bg-white text-[#16241c] rounded-2xl p-5 shadow-lg border border-[rgba(20,60,35,.1)] opacity-55 cursor-not-allowed select-none">
+              <span className="absolute top-3 right-3 text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded bg-[#e8f0e6] text-[#5d6f63]">Coming Soon</span>
               <h2 className="font-[Fredoka] font-semibold text-xl text-[#2E6FE0]">Tactical Drills</h2>
               <p className="text-sm font-semibold text-[#5d6f63] mt-0.5">Passing, movement, defending &amp; more</p>
             </div>
-          </Link>
+          </div>
 
           <Link href="/progress" className="block">
             <div className="bg-white text-[#16241c] rounded-2xl p-5 shadow-lg border border-[rgba(20,60,35,.1)] active:translate-y-[2px] transition-transform cursor-pointer">

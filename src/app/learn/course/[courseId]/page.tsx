@@ -31,6 +31,21 @@ export default function CoursePage({ params }: { params: Promise<{ courseId: str
     );
   }
 
+  // Coming-soon courses are locked for coaches & players (the card isn't even
+  // clickable for them); the master can still preview to author/manage. This
+  // guards direct-URL access.
+  if (course.comingSoon && !can("course:edit")) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+        <span className="text-4xl mb-3">{course.icon}</span>
+        <p className="font-[Fredoka] font-bold text-xl text-[#16241c] mb-1">{course.title}</p>
+        <span className="text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded bg-[#e8f0e6] text-[#5d6f63] mb-3">Coming Soon</span>
+        <p className="text-sm font-semibold text-[#5d6f63] max-w-xs mb-5">This course isn&apos;t available yet. Start with the 5v5 Pilot Course.</p>
+        <Link href="/learn" className="rounded-xl bg-[#2E6FE0] text-white font-bold px-5 py-2.5 text-sm">← Back to courses</Link>
+      </main>
+    );
+  }
+
   return (
     <main className="flex-1 flex flex-col items-center p-4">
       <div className="w-full max-w-xl">

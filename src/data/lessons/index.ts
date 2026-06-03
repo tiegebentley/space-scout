@@ -67,6 +67,7 @@ export const COURSES: Course[] = [
     level: "beginner",
     description:
       "Start here! Learn the fundamentals of 5v5 soccer: kickoffs, spacing, direction, playing out from the goalkeeper, finding space, and what to do when you lose the ball.",
+    comingSoon: true,
     lessonIds: [
       "meet-5v5-shape",
       "kickoff-basics",
@@ -84,6 +85,7 @@ export const COURSES: Course[] = [
     level: "intermediate",
     description:
       "Ready for more? Learn transitions, 2v1 support play, and game-day set pieces like goal kicks, kickoffs, and throw-ins.",
+    comingSoon: true,
     lessonIds: ["restarts-build-from-back", "when-we-win-ball", "helping-teammate-2v1", "game-day-situations"],
   },
 ];

@@ -43,6 +43,24 @@ export default function LearnPage() {
             const doneCount = builtIds.filter((id) => completed.includes(id)).length;
             const total = course.lessonIds.length;
             const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+
+            // Coming-soon courses (everything but the Pilot for now) render greyed
+            // out and are NOT clickable — a plain div instead of a Link.
+            if (course.comingSoon) {
+              return (
+                <div key={course.id} className="block" aria-disabled>
+                  <div className="relative h-full flex flex-col gap-2 rounded-2xl bg-white border-2 border-[rgba(20,60,35,.1)] shadow-sm p-4 opacity-55 cursor-not-allowed select-none">
+                    <span className="absolute top-2.5 right-2.5 text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded bg-[#e8f0e6] text-[#5d6f63]">Coming Soon</span>
+                    <span className="text-3xl leading-none">{course.icon}</span>
+                    <h2 className="font-[Fredoka] font-semibold text-base text-[#16241c] leading-tight">{course.title}</h2>
+                    <span className={clsx("self-start text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded", LEVEL_BADGE[course.level])}>
+                      {course.level}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <Link key={course.id} href={`/learn/course/${course.id}`} className="block">
                 <div className="h-full flex flex-col gap-2 rounded-2xl bg-white border-2 border-[rgba(20,60,35,.1)] shadow-sm p-4 hover:border-[#2E6FE0] hover:-translate-y-0.5 transition-all cursor-pointer">

@@ -135,4 +135,7 @@ export interface Course {
   level: "beginner" | "intermediate" | "advanced";
   description: string;
   lessonIds: string[];
+  // When true the course is shown greyed out with a "Coming Soon" badge and is
+  // not clickable. Only the Pilot Course is live for now.
+  comingSoon?: boolean;
 }

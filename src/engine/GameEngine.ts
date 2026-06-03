@@ -734,6 +734,9 @@ export class GameEngine {
     this.ball.x = r.x;
     this.ball.y = r.y;
     this.poss = r.team;
+    // Clear any leftover restart-hold so a new dead ball never freezes a stale
+    // taker from the previous play/rep.
+    for (const p of [...this.teamUs, ...this.teamThem]) p.restartHoldTimer = 0;
     this.emitActionUpdate();
 
     const labels: Record<string, string> = {
@@ -937,6 +940,13 @@ export class GameEngine {
     this.emitPill(this.poss === "us" ? "Your ball" : "Reds attacking", this.poss);
     this.restart = null;
     this.emit({ type: "stateChange", state: "live" });
+
+    // After a throw-in / kick-in, the thrower plays the ball FROM where they took
+    // it — hold their spot briefly so they don't flash back inside to formation
+    // the instant the ball is live. (Goal kicks/corners have their own shape.)
+    if (taker && taker !== this.you && type === "throwin") {
+      taker.restartHoldTimer = 72; // ~1.2s
+    }
 
     // Restarts begin with a PASS, not a dribble — corners, goal kicks and
     // kickoffs all play a first ball to a teammate. We skip the auto-pass only
@@ -1182,6 +1192,15 @@ export class GameEngine {
     for (const m of arr) {
       if (m === this.you || m.gk) continue;
       if (m.frozenTimer && m.frozenTimer > 0) continue;
+
+      // Restart taker holds their spot briefly after a throw-in / kick-in, so
+      // they stay where they played it from instead of flashing back inside to
+      // their formation slot. Skipped once they're the carrier (then they move
+      // normally). Ticks down here.
+      if (m.restartHoldTimer && m.restartHoldTimer > 0) {
+        if (m === carrier) { m.restartHoldTimer = 0; }
+        else { m.restartHoldTimer--; m.face = this.attackDir(m.side) < 0 ? -Math.PI / 2 : Math.PI / 2; continue; }
+      }
 
       // ===== AI CARRIER: dribble toward goal, avoiding defenders =====
       if (m === carrier) {
