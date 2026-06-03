@@ -802,17 +802,26 @@ export class GameEngine {
         p.x = bestSpot.x;
         p.y = bestSpot.y;
       } else if (r.type === "throwin") {
-        // On throw-ins: two players show short, one goes long
+        // On throw-ins, keep players on THEIR OWN side of the pitch. The far-side
+        // winger (e.g. the RW on a left throw-in) stays wide in its own channel —
+        // it should NOT drift across to the thrower's side. Only a player whose
+        // home is already near the throw-in shows short for it.
         const h = this.homeXY(p.side, p.home);
-        const showShort = Math.abs(h.x - r.x) < (R - L) * 0.3;
-        if (showShort) {
-          // come close to the thrower to offer a short option
-          p.x = clamp(r.x + (h.x > r.x ? 60 : -60), L + 30, R - 30);
+        const role = this.roleKeyOf(p);
+        const isWinger = role === "lw" || role === "rw";
+        const nearThrowSide = (h.x < W / 2) === (r.x < W / 2); // same half as the throw
+        if (isWinger && !nearThrowSide) {
+          // Far-side winger: hold the width on its own side, push up the line.
+          p.x = h.x;
+          p.y = clamp(r.y - dir * rand(60, 130), TOP + 20, BOT - 20);
+        } else if (nearThrowSide && Math.abs(h.x - r.x) < (R - L) * 0.3) {
+          // Same-side support: show SHORT and angled, just off the thrower.
+          p.x = clamp(r.x + (r.x < W / 2 ? 60 : -60), L + 30, R - 30);
           p.y = clamp(r.y - dir * rand(30, 80), TOP + 20, BOT - 20);
         } else {
-          // go long — push forward into space
+          // Everyone else holds their home width, stepping up into space.
           p.x = h.x;
-          p.y = clamp(r.y - dir * rand(80, 160), TOP + 20, BOT - 20);
+          p.y = clamp(r.y - dir * rand(70, 150), TOP + 20, BOT - 20);
         }
       } else if (r.type === "corner") {
         // On corners give the attacking side a real shape around the taker so
