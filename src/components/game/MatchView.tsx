@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { GameCanvas } from "./GameCanvas";
 import { Joystick } from "./Joystick";
 import { ActionButtons } from "./ActionButtons";
@@ -152,9 +153,13 @@ export function MatchView() {
       {/* Header */}
       <header className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white">
         <div className="flex items-center gap-2.5">
-          <div className="w-[34px] h-[34px] rounded-[10px] bg-white/[.16] grid place-items-center text-lg border border-white/[.28]">
-            &#9917;
-          </div>
+          <Link
+            href="/"
+            title="Return to homepage"
+            className="shrink-0 w-[34px] h-[34px] rounded-[10px] bg-white/[.16] grid place-items-center text-lg border border-white/[.28] hover:bg-white/[.28] transition-colors cursor-pointer"
+          >
+            &#8962;
+          </Link>
           <div>
             <h1 className="font-[Fredoka] font-semibold text-lg leading-tight">Space Scout</h1>
             <p className="text-[10.5px] opacity-85 font-bold -mt-0.5 tracking-wide">

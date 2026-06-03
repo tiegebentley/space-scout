@@ -98,7 +98,9 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
 
   // Objective + setup must be on the config the engine reads.
   const cfgRef = useRef<Partial<MatchConfig>>({ ...matchConfig, objective });
-  const { engine, startMatch, doPass, doShoot } = useGameLoop({ canvasRef, config: cfgRef.current, onEvent });
+  const { engine, startMatch, doPass, doShoot, togglePause } = useGameLoop({ canvasRef, config: cfgRef.current, onEvent });
+  const [paused, setPaused] = useState(false);
+  const onPause = useCallback(() => { togglePause(); setPaused((p) => !p); }, [togglePause]);
 
   // Time-based objective ticks + per-rep timer.
   useEffect(() => {
@@ -157,6 +159,16 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
                   </span>
             )}
             <p className="text-sm font-extrabold text-[#2B8A4E]">{obj.progress}/{obj.target}</p>
+            {started && !obj.done && (
+              <button
+                onClick={onPause}
+                title={paused ? "Resume" : "Pause"}
+                aria-label={paused ? "Resume" : "Pause"}
+                className="shrink-0 w-7 h-7 grid place-items-center rounded-lg bg-[#16241c] text-white text-[13px] cursor-pointer hover:bg-[#2b3f33] transition-colors"
+              >
+                {paused ? "▶" : "❚❚"}
+              </button>
+            )}
           </div>
         </div>
         <div className="w-full bg-[#e8f0e6] rounded-full h-2 overflow-hidden mt-1">
@@ -169,6 +181,14 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
       <div className="lg:grid lg:grid-cols-[1fr_222px] lg:gap-3 lg:items-start">
         <div className="relative w-full">
           <GameCanvas engineRef={engine} canvasRef={canvasRef} className="w-full rounded-2xl shadow-sm" />
+          {paused && started && !obj.done && (
+            <button
+              onClick={onPause}
+              className="absolute inset-0 m-auto h-fit w-fit rounded-xl bg-[rgba(11,40,22,.72)] backdrop-blur-sm text-white font-[Fredoka] font-bold text-base px-5 py-3 shadow-lg cursor-pointer"
+            >
+              ▶ Resume
+            </button>
+          )}
           {!started && !obj.done && (
             <button onClick={start} className="absolute inset-0 m-auto h-fit w-fit rounded-xl bg-[#2B8A4E] text-white font-[Fredoka] font-bold text-lg px-6 py-3 shadow-lg cursor-pointer">▶ Start</button>
           )}
