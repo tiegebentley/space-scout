@@ -56,22 +56,26 @@ export const WINGER_X_BOUNDS = {
 // Formations define ALL outfield positions. The user picks which one to control.
 // Default user role per format is the first key.
 export const FORMATIONS: Record<string, Record<string, RoleConfig>> = {
+  // fx convention: 0 = left touchline, 1 = right touchline (from "us" POV). So a
+  // LEFT-sided role (lw, lcb) gets a LOW fx and a RIGHT-sided role (rw, rcb) a
+  // HIGH fx — names match the side of the field, consistent with WINGER_X_BOUNDS,
+  // the corner/throw-in taker logic, and the jersey numbers.
   "5v5": {
     hold: { fx: 0.50, fy: 0.28, role: "hold" },
-    lw:   { fx: 0.88, fy: 0.42, role: "wide" },
-    rw:   { fx: 0.12, fy: 0.42, role: "wide" },
+    lw:   { fx: 0.12, fy: 0.42, role: "wide" },
+    rw:   { fx: 0.88, fy: 0.42, role: "wide" },
     fwd:  { fx: 0.50, fy: 0.55, role: "fwd" },
   },
   "3v3": {
-    lw:   { fx: 0.85, fy: 0.42, role: "wide" },
-    rw:   { fx: 0.15, fy: 0.42, role: "wide" },
+    lw:   { fx: 0.15, fy: 0.42, role: "wide" },
+    rw:   { fx: 0.85, fy: 0.42, role: "wide" },
   },
   "7v7": {
-    lcb:  { fx: 0.62, fy: 0.18, role: "def" },
-    rcb:  { fx: 0.38, fy: 0.18, role: "def" },
+    lcb:  { fx: 0.38, fy: 0.18, role: "def" },
+    rcb:  { fx: 0.62, fy: 0.18, role: "def" },
     hold: { fx: 0.50, fy: 0.34, role: "hold" },
-    lw:   { fx: 0.92, fy: 0.50, role: "wide" },
-    rw:   { fx: 0.08, fy: 0.50, role: "wide" },
+    lw:   { fx: 0.08, fy: 0.50, role: "wide" },
+    rw:   { fx: 0.92, fy: 0.50, role: "wide" },
     am:   { fx: 0.50, fy: 0.58, role: "am" },
   },
 };

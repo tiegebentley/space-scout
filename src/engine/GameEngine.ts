@@ -753,7 +753,10 @@ export class GameEngine {
     let taker: Player | null;
     if (r.type === "goalkick") {
       taker = (r.team === "us" ? this.gkUs : this.gkThem) ?? this.nearestTeammateTo(r.team, r.x, r.y, true);
-    } else if (r.type === "corner") {
+    } else if (r.type === "corner" || r.type === "throwin") {
+      // The winger on the side the ball is at takes corners AND throw-ins: a left
+      // (low-x) restart goes to the LW, a right (high-x) restart to the RW. Falls
+      // back to the nearest teammate if that winger isn't on the pitch.
       const wingRole = r.x < W / 2 ? "lw" : "rw";
       taker = this.teammateByRole(r.team, wingRole) ?? this.nearestTeammateTo(r.team, r.x, r.y, true);
     } else {
