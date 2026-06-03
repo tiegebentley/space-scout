@@ -35,12 +35,14 @@ export interface Player {
   carryTimer?: number;
 }
 
-export type PlayerRole = "you" | "lw" | "rw" | "hold" | "fwd" | "gk" | "lcm" | "rcm";
+export type PlayerRole =
+  | "you" | "lw" | "rw" | "hold" | "fwd" | "gk"
+  | "am" | "lcb" | "rcb" | "lcm" | "rcm";
 
 export interface RoleConfig {
   fx: number;
   fy: number;
-  role: "mid" | "wide" | "hold" | "fwd" | "gk";
+  role: "mid" | "wide" | "hold" | "fwd" | "gk" | "am" | "def";
 }
 
 export interface Ball {

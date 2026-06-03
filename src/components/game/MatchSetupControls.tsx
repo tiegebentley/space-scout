@@ -4,7 +4,7 @@
 // shared by /play and the lesson author's Scenario/Game steps. Driven by a
 // MatchConfig value + an onChange(patch) callback (no store coupling).
 import { clsx } from "clsx";
-import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS } from "@/engine/constants";
+import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS, ROLE_LABELS } from "@/engine/constants";
 import { ALL_TACTICS } from "@/engine/tactics/presets";
 import type { MatchConfig } from "@/types/game";
 
@@ -18,11 +18,6 @@ const DURATIONS = [
   { ms: 180000, label: "3:00" },
   { ms: 300000, label: "5:00" },
 ];
-const ROLE_LABELS: Record<string, string> = {
-  hold: "Holding Mid (6)", lw: "Left Wing (11)", rw: "Right Wing (7)",
-  fwd: "Forward (10)", lcm: "Left CM (8)", rcm: "Right CM (10)",
-};
-
 interface Props {
   value: Partial<MatchConfig>;
   onChange: (patch: Partial<MatchConfig>) => void;

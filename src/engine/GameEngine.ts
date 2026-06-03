@@ -822,8 +822,9 @@ export class GameEngine {
           // #6 supports SHORT — a few steps off the taker for the give-and-go.
           p.x = clamp(r.x + (nearPost ? 70 : -70), L + 24, R - 24);
           p.y = clamp(goalY - dir * 70, TOP + 20, BOT - 20);
-        } else if (role === "fwd") {
-          // Striker attacks the goal — central, right in front of the net.
+        } else if (role === "fwd" || role === "am") {
+          // The central attacker (striker / attacking mid) attacks the goal —
+          // central, right in front of the net.
           p.x = clamp(W / 2 + rand(-20, 20), GX0, GX1);
           p.y = clamp(goalY - dir * 36, TOP + 16, BOT - 16);
         } else if (role === "lw" || role === "rw") {
@@ -895,8 +896,14 @@ export class GameEngine {
     for (const opp of oppPlayers) {
       if (opp.gk || opp === this.you) continue;
 
-      // Find matching setup position by role
-      const match = setup.positions.find(sp => opp.home.role === sp.role)
+      // Find matching setup position by role. The setups are written for the 5v5
+      // roles (hold/fwd/lw/rw); alias the central attacker so 7v7's "am" reuses
+      // the "fwd" slot, and center backs (no slot) fall through to home below.
+      const oppKey = opp.id.replace("us-", "").replace("them-", "");
+      const aliasRole = (sp: string) =>
+        opp.home.role === sp || oppKey === sp ||
+        (sp === "fwd" && (oppKey === "am" || opp.home.role === "am"));
+      const match = setup.positions.find(sp => aliasRole(sp.role))
         || setup.positions.find(sp => opp.id.includes(sp.role));
 
       if (match) {
@@ -989,7 +996,7 @@ export class GameEngine {
     };
 
     if (type === "kickoff") return byRole("hold") ?? mostOpen();
-    if (type === "corner") return byRole("fwd") ?? byRole("hold") ?? mostOpen();
+    if (type === "corner") return byRole("fwd") ?? byRole("am") ?? byRole("hold") ?? mostOpen();
     // goalkick, throwin, and anything else: play to the most open teammate.
     return mostOpen();
   }
@@ -1505,13 +1512,20 @@ export class GameEngine {
     let targetFx = homeFx;
     let targetFy = m.home.fy;
 
-    if (role === "fwd") {
+    if (role === "fwd" || role === "am") {
       if (ballDepth < 0.35) {
-        targetFy = clamp(m.home.fy - 0.15, 0.40, 0.65);
+        targetFy = clamp(m.home.fy - 0.15, 0.35, 0.65);
       } else if (ballDepth > 0.6) {
-        targetFy = clamp(m.home.fy + 0.12, 0.65, 0.95);
+        targetFy = clamp(m.home.fy + 0.12, 0.60, 0.95);
         targetFx = clamp(targetFx + (ballSide - 0.5) * 0.15, 0.3, 0.7);
       }
+    } else if (role === "def") {
+      // Center backs hold a deep central line; shuffle slightly toward the ball's
+      // side and only step up a touch when play is in the attacking half.
+      targetFx = clamp(homeFx + (ballSide - 0.5) * 0.18, 0.25, 0.75);
+      targetFy = ballDepth > 0.65
+        ? clamp(m.home.fy + 0.10, 0.10, 0.45)
+        : clamp(m.home.fy, 0.05, 0.30);
     } else if (role === "wide") {
       const isLeftSide = homeFx < 0.5;
       const ballOnMySide = isLeftSide ? ballSide < 0.45 : ballSide > 0.55;

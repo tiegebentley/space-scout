@@ -32,8 +32,10 @@ export interface RoleBounds {
 
 export const ROLE_BOUNDS: Record<string, RoleBounds> = {
   fwd:  { fyMin: 0.35, fyMax: 1.00 },
+  am:   { fyMin: 0.30, fyMax: 0.95 }, // attacking mid: advanced central, links to attack
   wide: { fyMin: 0.15, fyMax: 0.92 },
   mid:  { fyMin: 0.18, fyMax: 0.78 },
+  def:  { fyMin: 0.04, fyMax: 0.48 }, // center backs: stay deep, hold the line
   hold: { fyMin: 0.08, fyMax: 0.52 },
   gk:   { fyMin: 0.00, fyMax: 0.10 },
 };
@@ -65,31 +67,32 @@ export const FORMATIONS: Record<string, Record<string, RoleConfig>> = {
     rw:   { fx: 0.15, fy: 0.42, role: "wide" },
   },
   "7v7": {
-    hold: { fx: 0.50, fy: 0.26, role: "hold" },
-    lw:   { fx: 0.92, fy: 0.42, role: "wide" },
-    rw:   { fx: 0.08, fy: 0.42, role: "wide" },
-    lcm:  { fx: 0.35, fy: 0.36, role: "mid" },
-    rcm:  { fx: 0.65, fy: 0.36, role: "mid" },
-    fwd:  { fx: 0.50, fy: 0.55, role: "fwd" },
+    lcb:  { fx: 0.62, fy: 0.18, role: "def" },
+    rcb:  { fx: 0.38, fy: 0.18, role: "def" },
+    hold: { fx: 0.50, fy: 0.34, role: "hold" },
+    lw:   { fx: 0.92, fy: 0.50, role: "wide" },
+    rw:   { fx: 0.08, fy: 0.50, role: "wide" },
+    am:   { fx: 0.50, fy: 0.58, role: "am" },
   },
 };
 
 export const DEFAULT_USER_ROLE: Record<string, string> = {
   "5v5": "rw",
   "3v3": "rw",
-  "7v7": "rcm",
+  "7v7": "am",
 };
 
 // Jersey numbers by role key
 export const JERSEY_NUMBERS: Record<string, number> = {
-  gk: 1, hold: 6, lw: 11, rw: 7, fwd: 10, lcm: 8, rcm: 10,
+  gk: 1, hold: 6, lw: 11, rw: 7, fwd: 10, am: 10, lcb: 5, rcb: 4, lcm: 8, rcm: 10,
 };
 
 // Human-readable role names + zone box colors (shared by the rule editor and the
 // on-pitch draw tool).
 export const ROLE_LABELS: Record<string, string> = {
   gk: "Goalkeeper", hold: "Holding Mid (6)", lw: "Left Wing (11)",
-  rw: "Right Wing (7)", fwd: "Forward (10)", lcm: "Left CM (8)", rcm: "Right CM (10)",
+  rw: "Right Wing (7)", fwd: "Forward (10)", am: "Attacking Mid (10)",
+  lcb: "Left CB (5)", rcb: "Right CB (4)", lcm: "Left CM (8)", rcm: "Right CM (10)",
 };
 
 export const ZONE_COLORS: Record<string, string> = {

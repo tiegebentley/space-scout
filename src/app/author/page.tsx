@@ -21,7 +21,7 @@ import { BUILTIN_PRESETS } from "@/data/zonePresets";
 
 // Jersey-number label for a role key, e.g. "hold" → "#6 Holding Mid (6)".
 const roleLabel = (r: string) => `#${JERSEY_NUMBERS[r] ?? "?"} ${ROLE_LABELS[r] ?? r}`;
-const OBJ_ROLES = ["gk", "hold", "lw", "rw", "fwd", "lcm", "rcm"];
+const OBJ_ROLES = ["gk", "hold", "lw", "rw", "fwd", "am", "lcb", "rcb", "lcm", "rcm"];
 import type { BoardObject, Scenario, Zone, Lesson, Choice, InfoCard, LessonStep, ScenarioObjective } from "@/types/lessons";
 import type { ZoneRule, EngineRect, ZoneCondition, ZoneMovement, ZoneAction, ZoneOffBall, ScenarioSetup } from "@/types/game";
 

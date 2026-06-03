@@ -5,19 +5,10 @@ import { ZonePitchEditor } from "@/components/game/ZonePitchEditor";
 import { useGameStore } from "@/stores/gameStore";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS } from "@/engine/constants";
+import { FORMATIONS, DEFAULT_USER_ROLE, JERSEY_NUMBERS, ROLE_LABELS } from "@/engine/constants";
 import { MatchSetupControls } from "@/components/game/MatchSetupControls";
 import { BUILTIN_PRESETS } from "@/data/zonePresets";
 import type { ZoneRule, RulePreset, ZoneCondition, ZoneMovement, ZoneAction, ZoneOffBall } from "@/types/game";
-
-const ROLE_LABELS: Record<string, string> = {
-  hold: "Holding Mid (6)",
-  lw: "Left Wing (11)",
-  rw: "Right Wing (7)",
-  fwd: "Forward (10)",
-  lcm: "Left CM (8)",
-  rcm: "Right CM (10)",
-};
 
 const ZONE_COLORS: Record<string, string> = {
   us: "rgb(46,111,224)",
