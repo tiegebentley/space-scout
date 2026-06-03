@@ -156,9 +156,10 @@ export function MatchView() {
           <Link
             href="/"
             title="Return to homepage"
-            className="shrink-0 w-[34px] h-[34px] rounded-[10px] bg-white/[.16] grid place-items-center text-lg border border-white/[.28] hover:bg-white/[.28] transition-colors cursor-pointer"
+            className="shrink-0 flex items-center gap-1.5 rounded-[10px] bg-white/[.18] border border-white/[.3] text-white font-[Fredoka] font-bold text-sm px-3 h-[34px] hover:bg-white/[.3] transition-colors cursor-pointer"
           >
-            &#8962;
+            <span className="text-base leading-none">&#8962;</span>
+            Home
           </Link>
           <div>
             <h1 className="font-[Fredoka] font-semibold text-lg leading-tight">Space Scout</h1>
