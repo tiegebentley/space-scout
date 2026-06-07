@@ -226,29 +226,29 @@ export function MatchView() {
           {/* Start overlay */}
           {!started && !matchOver && (
             <div className="absolute inset-2 lg:inset-3 rounded-xl flex items-center justify-center bg-[rgba(11,40,22,.62)] backdrop-blur-sm text-center text-white p-5 z-20">
-              <div className="bg-white/[.08] border border-white/[.2] rounded-2xl p-5 max-w-[370px]">
-                <h2 className="font-[Fredoka] font-semibold text-[23px] mb-2">
+              <div className="bg-white/[.08] border border-white/[.2] rounded-2xl p-6 lg:p-7 max-w-[400px] w-full max-h-full overflow-y-auto">
+                <h2 className="font-[Fredoka] font-semibold text-[24px] mb-3">
                   {matchConfig.format.toUpperCase()} Match
                 </h2>
                 <p className="text-[13.5px] leading-relaxed opacity-95 font-semibold">
                   You always control the <b>blue player with the gold ring</b>. Attack the <b>top</b> goal.
                   When your team has the ball, find space to receive. When you <b>lose</b> it, chase and defend!
                 </p>
-                <div className="flex flex-col gap-1.5 text-left mt-3 text-[12.5px] font-bold">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2.5 text-left mt-5 text-[12.5px] font-bold">
+                  <div className="flex items-center gap-2.5">
                     <span className="w-[15px] h-[15px] rounded-full bg-[#2E6FE0] shadow-[0_0_0_3px_#FFC531] flex-none" />
                     You (attack &amp; defend)
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <span className="w-[15px] h-[15px] rounded-full bg-[#2E6FE0] flex-none" />
                     Blues (your team)
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <span className="w-[15px] h-[15px] rounded-full bg-[#E0463B] flex-none" />
                     Reds (opponents)
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 mt-3.5 text-[12.5px] font-extrabold justify-center">
+                <div className="flex items-center gap-2.5 mt-6 text-[12.5px] font-extrabold justify-center">
                   <span>Slow</span>
                   <input
                     type="range"
@@ -262,7 +262,7 @@ export function MatchView() {
                 </div>
                 <TapButton
                   onTap={handleToggleBuildout}
-                  className="flex items-center justify-center gap-2 mt-2 text-[11px] font-extrabold tracking-wide cursor-pointer"
+                  className="flex items-center justify-center gap-2 mt-5 text-[11px] font-extrabold tracking-wide cursor-pointer"
                 >
                   <span className={clsx(
                     "w-7 h-4 rounded-full relative transition-colors inline-block",
@@ -275,7 +275,7 @@ export function MatchView() {
                   </span>
                   Buildout Lines
                 </TapButton>
-                <TapButton onTap={handleStart} className="btn-primary mt-3">
+                <TapButton onTap={handleStart} className="btn-primary mt-6 w-full">
                   Kick off
                 </TapButton>
               </div>
