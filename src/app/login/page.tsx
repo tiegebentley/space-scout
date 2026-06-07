@@ -16,6 +16,7 @@ function LoginInner() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -66,9 +67,16 @@ function LoginInner() {
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required
             placeholder="Email" autoComplete="email"
             className="rounded-xl border border-[rgba(20,60,35,.15)] px-3 py-2.5 text-sm font-semibold" />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required
-            placeholder="Password" autoComplete={mode === "login" ? "current-password" : "new-password"}
-            className="rounded-xl border border-[rgba(20,60,35,.15)] px-3 py-2.5 text-sm font-semibold" />
+          <div className="relative">
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type={showPw ? "text" : "password"} required
+              placeholder="Password" autoComplete={mode === "login" ? "current-password" : "new-password"}
+              className="w-full rounded-xl border border-[rgba(20,60,35,.15)] px-3 py-2.5 pr-12 text-sm font-semibold" />
+            <button type="button" onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? "Hide password" : "Show password"}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-[#2B8A4E] px-2 py-1 cursor-pointer">
+              {showPw ? "Hide" : "Show"}
+            </button>
+          </div>
 
           {err && <p className="text-xs font-bold text-[#E0463B]">{err}</p>}
           {info && <p className="text-xs font-bold text-[#1e5e36]">{info}</p>}
