@@ -13,12 +13,8 @@ export default function HomePage() {
   return (
     <main className="flex-1 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Account bar — extra top padding so the role badge + Sign out clear the
-            device status bar / notch in the native app. */}
-        <div
-          className="flex items-center justify-between mb-4 text-xs"
-          style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 8px)" }}
-        >
+        {/* Account bar (top inset handled globally by `main` padding). */}
+        <div className="flex items-center justify-between mb-4 text-xs">
           <span className="font-bold text-[#5d6f63]">
             {displayName ?? "Signed in"}
             {role && <span className="ml-2 rounded-full bg-[#16241c] text-white px-2 py-0.5 font-extrabold uppercase tracking-wide">{ROLE_LABEL[role]}</span>}

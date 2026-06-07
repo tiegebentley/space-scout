@@ -35,13 +35,19 @@ body {
   color: var(--ink);
   background: radial-gradient(1200px 600px at 50% -10%, #eafaef, #dff0e4 40%, #cfe6d6);
   min-height: 100dvh;
-  /* Clear the device notch sides / home indicator. The TOP inset is handled
-     per-screen (the account bar on the menu, the match header in a game) so it
-     can't double-pad with this. No-ops to 0 in a normal desktop browser. */
+  /* Clear the device notch sides / home indicator. No-ops to 0 in a desktop browser. */
   padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   box-sizing: border-box;
+}
+
+/* Top safe-area inset applied once, to every screen's <main>, so top menu bars
+   (Home, account/role + Sign out, ← Lessons, etc.) always clear the device
+   status bar / notch in the native app. Single source of truth — no per-page
+   padding to keep in sync, and no double-padding. */
+main {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .btn-primary {

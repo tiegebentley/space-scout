@@ -68,6 +68,8 @@ export function AuthorBoard({
   // see the box as you drag); commit on release. Window listeners keep it robust.
   const onSvgPointerDown = (e: React.PointerEvent) => {
     if (tool.kind !== "drawZone") return;
+    e.preventDefault();
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
     const start = toLab(e.clientX, e.clientY);
     const forId = tool.forId;
     setDrawPreview({ x: start.x, y: start.y, w: 0, h: 0 });
@@ -90,8 +92,10 @@ export function AuthorBoard({
   // Drag/resize an existing zone (move = whole box; corner = resize).
   const onZonePointerDown = (id: string, z: Zone, handle: "move" | "se") => (e: React.PointerEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     setEditZoneId(id);
     onSelect(null);
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
     const start = toLab(e.clientX, e.clientY);
     const orig = { ...z };
     const move = (ev: PointerEvent) => {
@@ -114,7 +118,9 @@ export function AuthorBoard({
   const onObjPointerDown = (id: string, end?: "tip" | "tail") => (e: React.PointerEvent) => {
     if (tool.kind === "drawZone") return; // zone tool ignores tokens
     e.stopPropagation();
+    e.preventDefault();
     onSelect(id);
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
     drag.current = { id, end };
     const move = (ev: PointerEvent) => {
       if (!drag.current) return;
@@ -143,12 +149,14 @@ export function AuthorBoard({
         <rect x={x} y={y} width={w} height={h}
           fill={active ? "rgba(255,209,102,.28)" : "rgba(255,209,102,.14)"}
           stroke="#FFD166" strokeWidth={3} strokeDasharray="10 8" rx={10}
-          style={{ cursor: "move" }}
+          style={{ cursor: "move", touchAction: "none" }}
           onPointerDown={onZonePointerDown(id, z, "move")} />
         {active && <>
-          {/* SE resize handle */}
+          {/* SE resize handle — larger hit area for touch (easier to grab) */}
+          <circle cx={x + w} cy={y + h} r={18} fill="#FFD166" fillOpacity={0.001}
+            style={{ cursor: "nwse-resize", touchAction: "none" }} onPointerDown={onZonePointerDown(id, z, "se")} />
           <circle cx={x + w} cy={y + h} r={11} fill="#FFD166" stroke="#16241c" strokeWidth={2}
-            style={{ cursor: "nwse-resize" }} onPointerDown={onZonePointerDown(id, z, "se")} />
+            style={{ cursor: "nwse-resize", touchAction: "none", pointerEvents: "none" }} />
           {/* Delete button (top-right) */}
           <g style={{ cursor: "pointer" }} onPointerDown={(e) => { e.stopPropagation(); removeZone?.(id); if (editZoneId === id) setEditZoneId(null); }}>
             <circle cx={x + w} cy={y} r={11} fill="#E0463B" stroke="#fff" strokeWidth={2} />
@@ -163,7 +171,12 @@ export function AuthorBoard({
     <svg
       ref={svgRef}
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-      className={clsx("w-full max-w-[420px] mx-auto block rounded-2xl border-2 touch-none select-none shadow-sm",
+      // Allow the page to scroll when you touch the field (needed in the Author
+      // editor, which scrolls). Only lock touch to the board while the draw-zone
+      // tool is active. Individual tokens/zones set their own touch-action:none so
+      // dragging THEM still works without blocking page scroll elsewhere.
+      style={{ touchAction: tool.kind === "drawZone" ? "none" : "pan-y" }}
+      className={clsx("w-full max-w-[420px] mx-auto block rounded-2xl border-2 select-none shadow-sm",
         tool.kind === "drawZone" ? "border-[#FFD166] cursor-crosshair" : "border-[rgba(20,60,35,.15)]")}
       onPointerDown={onSvgPointerDown}
     >
@@ -203,21 +216,21 @@ export function AuthorBoard({
           return (
             <g key={o.id}>
               <line x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy} stroke={o.color || HOME} strokeWidth={5} strokeLinecap="round" strokeDasharray={o.style === "run" ? "10 8" : undefined} />
-              <circle cx={a.sx} cy={a.sy} r={12} fill="rgba(46,111,224,.4)" stroke={o.color || HOME} strokeWidth={2} style={{ cursor: "grab" }} onPointerDown={onObjPointerDown(o.id, "tail")} />
-              <circle cx={b.sx} cy={b.sy} r={14} fill="rgba(255,209,102,.5)" stroke="#FFD166" strokeWidth={3} style={{ cursor: "grab" }} onPointerDown={onObjPointerDown(o.id, "tip")} />
+              <circle cx={a.sx} cy={a.sy} r={12} fill="rgba(46,111,224,.4)" stroke={o.color || HOME} strokeWidth={2} style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onObjPointerDown(o.id, "tail")} />
+              <circle cx={b.sx} cy={b.sy} r={14} fill="rgba(255,209,102,.5)" stroke="#FFD166" strokeWidth={3} style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onObjPointerDown(o.id, "tip")} />
               {isAns && <text x={(a.sx + b.sx) / 2} y={(a.sy + b.sy) / 2 - 10} textAnchor="middle" fontSize={14} fontWeight={800} fill="#FFD166">answer</text>}
             </g>
           );
         }
         const s = labToScreen(o.x, o.y);
         if (o.type === "ball") {
-          return <circle key={o.id} cx={s.sx} cy={s.sy} r={12} fill="#fff" stroke={selectedId === o.id ? "#FFD166" : "#222"} strokeWidth={selectedId === o.id ? 4 : 2} style={{ cursor: "grab" }} onPointerDown={onObjPointerDown(o.id)} />;
+          return <circle key={o.id} cx={s.sx} cy={s.sy} r={12} fill="#fff" stroke={selectedId === o.id ? "#FFD166" : "#222"} strokeWidth={selectedId === o.id ? 4 : 2} style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onObjPointerDown(o.id)} />;
         }
         const isHome = o.team === "home";
         const isAnswer = answerIds.includes(o.id);
         const sel = selectedId === o.id;
         return (
-          <g key={o.id} style={{ cursor: "grab" }} onPointerDown={onObjPointerDown(o.id)}>
+          <g key={o.id} style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onObjPointerDown(o.id)}>
             <circle cx={s.sx} cy={s.sy} r={R} fill={isHome ? HOME : AWAY}
               stroke={sel ? "#fff" : isAnswer ? "#FFD166" : "rgba(255,255,255,.85)"} strokeWidth={sel ? 6 : isAnswer ? 5 : 2} />
             <text x={s.sx} y={s.sy + 6} textAnchor="middle" fontSize={20} fontWeight={800} fill="#fff" style={{ fontFamily: "Fredoka, sans-serif", pointerEvents: "none" }}>

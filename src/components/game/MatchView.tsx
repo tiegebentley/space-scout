@@ -151,11 +151,8 @@ export function MatchView() {
       "flex flex-col lg:block",
       controlsRight && "controls-right"
     )}>
-      {/* Header — top padding clears the device status bar / notch in the app. */}
-      <header
-        className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white"
-        style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 10px)" }}
-      >
+      {/* Header (top inset handled globally by `main` padding). */}
+      <header className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white">
         <div className="flex items-center gap-2.5">
           <Link
             href="/"
