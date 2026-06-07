@@ -21,7 +21,9 @@ function hydrateRules(rules: Omit<ZoneRule, "id">[]): ZoneRule[] {
 }
 
 export default function PlayPage() {
-  const [selecting, setSelecting] = useState(true);
+  // When a lesson launched this match (fromLesson), skip the setup screen and go
+  // straight into the configured game. Read the store once for the initial value.
+  const [selecting, setSelecting] = useState(() => !useGameStore.getState().matchConfig?.fromLesson);
   const [zoneRules, setZoneRules] = useState<ZoneRule[]>([]);
   // Undo/redo history for zone edits. Each entry is a full snapshot of zoneRules.
   // Kept as one object so the stack + pointer move atomically. Continuous edits
@@ -57,6 +59,13 @@ export default function PlayPage() {
   const customPresets = useGameStore((s) => s.customPresets);
   const savePreset = useGameStore((s) => s.savePreset);
   const deletePreset = useGameStore((s) => s.deletePreset);
+
+  // Consume the one-shot fromLesson flag so a later manual visit to /play shows
+  // the setup screen again (we've already used it for the initial selecting state).
+  useEffect(() => {
+    if (matchConfig?.fromLesson) setMatchConfig({ ...matchConfig, fromLesson: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const currentFormat = matchConfig.format;
   const formation = FORMATIONS[currentFormat] || FORMATIONS["5v5"];

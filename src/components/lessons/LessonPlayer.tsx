@@ -53,11 +53,12 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   }, [stepIdx, total]);
 
   const goBack = useCallback(() => {
-    if (stepIdx === 0) return;
+    // On the first step, "Back" exits the lesson (was a dead/greyed button).
+    if (stepIdx === 0) { router.push("/learn"); return; }
     setResolved(false);
     setObjectiveMet(false);
     setStepIdx((i) => i - 1);
-  }, [stepIdx]);
+  }, [stepIdx, router]);
 
   const score = useMemo(() => Object.values(results).filter(Boolean).length, [results]);
   const pct = scenarioCount > 0 ? Math.round((score / scenarioCount) * 100) : 100;
@@ -68,8 +69,9 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
 
   const launchGame = useCallback(() => {
     if (step.kind !== "play") return;
+    // Launch straight into the configured game (skip the /play setup screen).
     recordLesson(lesson.id, pct);
-    setMatchConfig(step.matchConfig);
+    setMatchConfig({ ...step.matchConfig, fromLesson: true });
     router.push("/play");
   }, [step, lesson.id, pct, recordLesson, setMatchConfig, router]);
 
@@ -175,8 +177,8 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
         {/* Nav (not on play step) */}
         {step.kind !== "play" && (
           <div className="flex items-center gap-3">
-            <button onClick={goBack} disabled={stepIdx === 0} className="rounded-xl px-4 py-2.5 text-sm font-bold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer disabled:opacity-35 disabled:cursor-default">
-              Back
+            <button onClick={goBack} className="rounded-xl px-4 py-2.5 text-sm font-bold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer">
+              {stepIdx === 0 ? "Exit" : "Back"}
             </button>
             <button
               onClick={goNext}

@@ -144,6 +144,9 @@ export interface MatchConfig {
   // Set on live "Scenario" steps — the objective to complete + dead-ball setup.
   objective?: ScenarioObjective;
   scenarioSetup?: ScenarioSetup;
+  // When a lesson's final "play" step launches the match, this skips the /play
+  // setup screen and drops straight into the configured game.
+  fromLesson?: boolean;
 }
 
 // Goalkick defensive setups — where the opposition positions on our goalkick
