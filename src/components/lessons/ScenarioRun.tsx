@@ -6,6 +6,7 @@ import { clsx } from "clsx";
 import { GameCanvas } from "@/components/game/GameCanvas";
 import { Joystick } from "@/components/game/Joystick";
 import { ActionButtons } from "@/components/game/ActionButtons";
+import { TapButton } from "@/components/ui/TapButton";
 import { useGameLoop } from "@/hooks/useGameLoop";
 import { createObjectiveTracker, type ObjectiveState } from "@/engine/scenarioObjective";
 import type { EngineEvent } from "@/engine/GameEngine";
@@ -160,14 +161,14 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
             )}
             <p className="text-sm font-extrabold text-[#2B8A4E]">{obj.progress}/{obj.target}</p>
             {started && !obj.done && (
-              <button
-                onClick={onPause}
+              <TapButton
+                onTap={onPause}
                 title={paused ? "Resume" : "Pause"}
                 aria-label={paused ? "Resume" : "Pause"}
                 className="shrink-0 w-7 h-7 grid place-items-center rounded-lg bg-[#16241c] text-white text-[13px] cursor-pointer hover:bg-[#2b3f33] transition-colors"
               >
                 {paused ? "▶" : "❚❚"}
-              </button>
+              </TapButton>
             )}
           </div>
         </div>
@@ -182,15 +183,15 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
         <div className="relative w-full">
           <GameCanvas engineRef={engine} canvasRef={canvasRef} className="w-full rounded-2xl shadow-sm" />
           {paused && started && !obj.done && (
-            <button
-              onClick={onPause}
+            <TapButton
+              onTap={onPause}
               className="absolute inset-0 m-auto h-fit w-fit rounded-xl bg-[rgba(11,40,22,.72)] backdrop-blur-sm text-white font-[Fredoka] font-bold text-base px-5 py-3 shadow-lg cursor-pointer"
             >
               ▶ Resume
-            </button>
+            </TapButton>
           )}
           {!started && !obj.done && (
-            <button onClick={start} className="absolute inset-0 m-auto h-fit w-fit rounded-xl bg-[#2B8A4E] text-white font-[Fredoka] font-bold text-lg px-6 py-3 shadow-lg cursor-pointer">▶ Start</button>
+            <TapButton onTap={start} className="absolute inset-0 m-auto h-fit w-fit rounded-xl bg-[#2B8A4E] text-white font-[Fredoka] font-bold text-lg px-6 py-3 shadow-lg cursor-pointer">▶ Start</TapButton>
           )}
         </div>
 
@@ -211,11 +212,11 @@ export function ScenarioRun({ matchConfig, objective, onComplete, onRetry }: Pro
       {obj.failed && !obj.done && (
         <div className="mt-3 flex items-center justify-between rounded-xl bg-[#fff3e0] border border-[#f0b657] px-4 py-3">
           <p className="text-sm font-bold text-[#8a5a00]">Not this time — try again.</p>
-          <button onClick={onRetry} className="rounded-lg bg-[#2E6FE0] text-white text-xs font-extrabold px-3 py-1.5 cursor-pointer">Retry</button>
+          <TapButton onTap={onRetry} className="rounded-lg bg-[#2E6FE0] text-white text-xs font-extrabold px-3 py-1.5 cursor-pointer">Retry</TapButton>
         </div>
       )}
       {started && !obj.done && (
-        <button onClick={onRetry} className="mt-2 text-xs font-bold text-[#5d6f63] hover:underline cursor-pointer">↺ Restart scenario</button>
+        <TapButton onTap={onRetry} className="mt-2 text-xs font-bold text-[#5d6f63] hover:underline cursor-pointer">↺ Restart scenario</TapButton>
       )}
     </div>
   );

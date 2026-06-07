@@ -1,5 +1,6 @@
 "use client";
 import type { Score } from "@/types/game";
+import { TapButton } from "@/components/ui/TapButton";
 
 interface ScoreboardProps {
   score: Score;
@@ -23,21 +24,21 @@ export function Scoreboard({ score, clock, onPause, onFlipControls, showFlip }: 
         <div className="font-extrabold text-[11px] tracking-wide">REDS</div>
         <div className="font-[Fredoka] font-semibold text-2xl leading-none text-[#ffc9c4]">{score.them}</div>
       </div>
-      <button
-        onClick={onPause}
+      <TapButton
+        onTap={onPause}
         title="Pause (spacebar)"
         className="font-[Fredoka] font-medium border-none cursor-pointer bg-white/[.18] border border-white/[.3] text-white rounded-[10px] w-[38px] h-[38px] text-[16px] grid place-items-center"
       >
         &#10074;&#10074;
-      </button>
+      </TapButton>
       {showFlip && onFlipControls && (
-        <button
-          onClick={onFlipControls}
+        <TapButton
+          onTap={onFlipControls}
           title="Swap control sides"
           className="font-[Fredoka] font-medium border-none cursor-pointer bg-white/[.18] border border-white/[.3] text-white rounded-[10px] w-[38px] h-[38px] text-[17px] grid place-items-center"
         >
           &#8646;
-        </button>
+        </TapButton>
       )}
     </div>
   );

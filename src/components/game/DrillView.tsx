@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState, useCallback, useEffect } from "react";
+import { TapButton } from "@/components/ui/TapButton";
 import { GameCanvas } from "./GameCanvas";
 import { Joystick } from "./Joystick";
 import { ActionButtons } from "./ActionButtons";
@@ -133,9 +134,9 @@ export function DrillView({ drill, onExit }: DrillViewProps) {
       {/* Header */}
       <header className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white">
         <div className="flex items-center gap-2.5">
-          <button onClick={onExit} className="text-white/80 hover:text-white font-bold text-sm">
+          <TapButton onTap={onExit} className="text-white/80 hover:text-white font-bold text-sm">
             &larr;
-          </button>
+          </TapButton>
           <div>
             <h1 className="font-[Fredoka] font-semibold text-lg leading-tight">{drill.name}</h1>
             <p className="text-[10.5px] opacity-85 font-bold -mt-0.5 tracking-wide uppercase">
@@ -203,9 +204,9 @@ export function DrillView({ drill, onExit }: DrillViewProps) {
                   ))}
                 </div>
                 <p className="text-[11px] opacity-70 mt-2">Time limit: {Math.round(drill.timeLimit / 1000)}s</p>
-                <button onClick={handleStart} className="btn-primary mt-3.5">
+                <TapButton onTap={handleStart} className="btn-primary mt-3.5">
                   Start Drill
-                </button>
+                </TapButton>
               </div>
             </div>
           )}
@@ -238,12 +239,12 @@ export function DrillView({ drill, onExit }: DrillViewProps) {
                   +{result.xpEarned} XP
                 </p>
                 <div className="flex gap-2 mt-3">
-                  <button onClick={onExit} className="flex-1 font-[Fredoka] font-medium rounded-xl py-3 text-sm bg-white/10 border border-white/20 text-white cursor-pointer">
+                  <TapButton onTap={onExit} className="flex-1 font-[Fredoka] font-medium rounded-xl py-3 text-sm bg-white/10 border border-white/20 text-white cursor-pointer">
                     Back
-                  </button>
-                  <button onClick={handleStart} className="flex-1 btn-primary !mt-0">
+                  </TapButton>
+                  <TapButton onTap={handleStart} className="flex-1 btn-primary !mt-0">
                     Retry
-                  </button>
+                  </TapButton>
                 </div>
               </div>
             </div>

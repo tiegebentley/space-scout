@@ -7,6 +7,7 @@
 import { useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { TapButton } from "@/components/ui/TapButton";
 import { clsx } from "clsx";
 import { ScenarioBoard, type ScenarioResult } from "./ScenarioBoard";
 import { ScenarioView } from "./ScenarioView";
@@ -101,9 +102,9 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
           </p>
           <div className="flex flex-col gap-2">
             <Link href="/learn" className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-3">Back to lessons</Link>
-            <button onClick={retry} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] font-bold text-sm py-3 cursor-pointer">
+            <TapButton onTap={retry} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] font-bold text-sm py-3 cursor-pointer">
               Retry lesson
-            </button>
+            </TapButton>
           </div>
         </div>
       </main>
@@ -163,13 +164,13 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
           <div className="bg-gradient-to-b from-[#43c46e] to-[#2B8A4E] text-white rounded-2xl shadow-lg p-6 mb-5">
             <h2 className="font-[Fredoka] font-semibold text-2xl mb-2">{step.title}</h2>
             <p className="text-[15px] leading-relaxed font-semibold opacity-95 mb-5">{step.body}</p>
-            <button onClick={launchGame} className="w-full rounded-xl bg-white text-[#1F6E3D] font-[Fredoka] font-bold text-lg py-3 shadow-[0_4px_0_rgba(0,0,0,.15)] active:translate-y-[2px] transition-transform cursor-pointer">
+            <TapButton onTap={launchGame} className="w-full rounded-xl bg-white text-[#1F6E3D] font-[Fredoka] font-bold text-lg py-3 shadow-[0_4px_0_rgba(0,0,0,.15)] active:translate-y-[2px] transition-transform cursor-pointer">
               ▶ Start the live game
-            </button>
+            </TapButton>
             {scenarioCount > 0 && (
-              <button onClick={finishToSummary} className="w-full mt-2 rounded-xl bg-white/15 text-white font-bold text-sm py-2.5 cursor-pointer hover:bg-white/25">
+              <TapButton onTap={finishToSummary} className="w-full mt-2 rounded-xl bg-white/15 text-white font-bold text-sm py-2.5 cursor-pointer hover:bg-white/25">
                 See my score
-              </button>
+              </TapButton>
             )}
           </div>
         )}
@@ -177,18 +178,18 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
         {/* Nav (not on play step) */}
         {step.kind !== "play" && (
           <div className="flex items-center gap-3">
-            <button onClick={goBack} className="rounded-xl px-4 py-2.5 text-sm font-bold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer">
+            <TapButton onTap={goBack} className="rounded-xl px-4 py-2.5 text-sm font-bold bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] cursor-pointer">
               {stepIdx === 0 ? "Exit" : "Back"}
-            </button>
-            <button
-              onClick={goNext}
+            </TapButton>
+            <TapButton
+              onTap={goNext}
               disabled={!canAdvance}
               className="flex-1 rounded-xl px-4 py-2.5 text-sm font-extrabold text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default bg-[#2E6FE0] hover:bg-[#2961c9]"
             >
               {step.kind === "scenario" && !resolved ? "Answer to continue…"
                 : step.kind === "live-scenario" && !objectiveMet ? "Complete the objective…"
                 : "Next"}
-            </button>
+            </TapButton>
           </div>
         )}
       </div>

@@ -35,10 +35,9 @@ body {
   color: var(--ink);
   background: radial-gradient(1200px 600px at 50% -10%, #eafaef, #dff0e4 40%, #cfe6d6);
   min-height: 100dvh;
-  /* Clear the device notch / status bar (and home indicator) so top menu buttons
-     like Home aren't hidden behind the phone's status bar in the native app.
-     No-ops to 0 in a normal desktop browser. */
-  padding-top: env(safe-area-inset-top, 0px);
+  /* Clear the device notch sides / home indicator. The TOP inset is handled
+     per-screen (the account bar on the menu, the match header in a game) so it
+     can't double-pad with this. No-ops to 0 in a normal desktop browser. */
   padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);

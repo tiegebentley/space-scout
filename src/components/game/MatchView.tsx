@@ -4,6 +4,7 @@ import Link from "next/link";
 import { GameCanvas } from "./GameCanvas";
 import { Joystick } from "./Joystick";
 import { ActionButtons } from "./ActionButtons";
+import { TapButton } from "@/components/ui/TapButton";
 import { CoachPanel } from "./CoachPanel";
 import { Scoreboard } from "./Scoreboard";
 import { StatePill } from "./StatePill";
@@ -150,8 +151,11 @@ export function MatchView() {
       "flex flex-col lg:block",
       controlsRight && "controls-right"
     )}>
-      {/* Header */}
-      <header className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white">
+      {/* Header — top padding clears the device status bar / notch in the app. */}
+      <header
+        className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white"
+        style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 10px)" }}
+      >
         <div className="flex items-center gap-2.5">
           <Link
             href="/"
@@ -219,9 +223,9 @@ export function MatchView() {
                 <p className="text-[13.5px] leading-relaxed opacity-95 font-semibold">
                   Take a breath. Look at the shape of both teams — where is the space?
                 </p>
-                <button onClick={handlePause} className="btn-primary mt-3.5">
+                <TapButton onTap={handlePause} className="btn-primary mt-3.5">
                   Resume
-                </button>
+                </TapButton>
               </div>
             </div>
           )}
@@ -263,8 +267,8 @@ export function MatchView() {
                   />
                   <span>Fast</span>
                 </div>
-                <button
-                  onClick={handleToggleBuildout}
+                <TapButton
+                  onTap={handleToggleBuildout}
                   className="flex items-center justify-center gap-2 mt-2 text-[11px] font-extrabold tracking-wide cursor-pointer"
                 >
                   <span className={clsx(
@@ -277,10 +281,10 @@ export function MatchView() {
                     )} />
                   </span>
                   Buildout Lines
-                </button>
-                <button onClick={handleStart} className="btn-primary mt-3">
+                </TapButton>
+                <TapButton onTap={handleStart} className="btn-primary mt-3">
                   Kick off
-                </button>
+                </TapButton>
               </div>
             </div>
           )}
@@ -299,9 +303,9 @@ export function MatchView() {
                 <p className="mt-2 text-sm">
                   Great match! Every time you find space and defend well, you read the game better.
                 </p>
-                <button onClick={handleStart} className="btn-primary mt-3.5">
+                <TapButton onTap={handleStart} className="btn-primary mt-3.5">
                   Play again
-                </button>
+                </TapButton>
               </div>
             </div>
           )}
@@ -312,8 +316,8 @@ export function MatchView() {
           <CoachPanel message={coachMsg} />
           <ActionButtons canPass={canPass} canShoot={canShoot} onPass={doPass} onShoot={doShoot} />
           <SpeedSlider value={speed} onChange={handleSpeedChange} />
-          <button
-            onClick={handleToggleBuildout}
+          <TapButton
+            onTap={handleToggleBuildout}
             className={clsx(
               "flex items-center justify-between rounded-xl px-3 py-2.5 text-[11px] font-extrabold tracking-wide cursor-pointer transition-all border",
               buildoutLines
@@ -331,9 +335,9 @@ export function MatchView() {
                 buildoutLines ? "left-[16px]" : "left-[2px]"
               )} />
             </span>
-          </button>
-          <button
-            onClick={handleToggleZoneEditor}
+          </TapButton>
+          <TapButton
+            onTap={handleToggleZoneEditor}
             className={clsx(
               "flex items-center justify-between rounded-xl px-3 py-2.5 text-[11px] font-extrabold tracking-wide cursor-pointer transition-all border",
               zoneEditor
@@ -351,15 +355,15 @@ export function MatchView() {
                 zoneEditor ? "left-[16px]" : "left-[2px]"
               )} />
             </span>
-          </button>
+          </TapButton>
           {/* Opponent tactic switcher — live during match */}
           <div className="bg-[#f3f7f2] rounded-xl p-2">
             <p className="text-[10px] font-extrabold text-[#E0463B] tracking-wide mb-1.5">🔴 OPP TACTIC</p>
             <div className="flex gap-1">
               {ALL_TACTICS.map((t) => (
-                <button
+                <TapButton
                   key={t.id}
-                  onClick={() => { setTactic(t.id, "them"); setActiveOppTactic(t.id); }}
+                  onTap={() => { setTactic(t.id, "them"); setActiveOppTactic(t.id); }}
                   className={clsx(
                     "flex-1 rounded-lg py-1.5 text-[10px] font-extrabold cursor-pointer transition-all text-center",
                     activeOppTactic === t.id
@@ -369,7 +373,7 @@ export function MatchView() {
                   title={t.name}
                 >
                   {t.icon}
-                </button>
+                </TapButton>
               ))}
             </div>
           </div>
