@@ -165,18 +165,6 @@ export function DrillView({ drill, onExit }: DrillViewProps) {
         <div className="relative bg-[#2B8A4E] p-2 lg:p-3 flex-1 flex flex-col min-h-0">
           <GameCanvas engineRef={engine} canvasRef={canvasRef} />
 
-          {/* Mobile floating controls */}
-          {started && !result && (
-            <>
-              <div className={clsx("absolute bottom-[18px] z-[7] lg:hidden", controlsRight ? "right-4" : "left-4")}>
-                <Joystick engineRef={engine} size={104} />
-              </div>
-              <div className={clsx("absolute bottom-[18px] z-[7] lg:hidden", controlsRight ? "left-4" : "right-4")}>
-                <ActionButtons canPass={canPass} canShoot={canShoot} onPass={doPass} onShoot={doShoot} layout="floating" />
-              </div>
-            </>
-          )}
-
           <StatePill pill={pill} />
 
           {/* Desktop joystick */}
@@ -186,6 +174,20 @@ export function DrillView({ drill, onExit }: DrillViewProps) {
               Arrow keys to move &middot; A = pass, S = shoot
             </p>
           </div>
+
+          {/* Mobile controls — BELOW the field (joystick + pass/shoot), matching
+              the Scenario screen layout. Flip sides with the handedness toggle. */}
+          {started && !result && (
+            <div className={clsx(
+              "flex lg:hidden items-center justify-between gap-4 mt-3 px-1",
+              controlsRight && "flex-row-reverse"
+            )}>
+              <Joystick engineRef={engine} />
+              <div className="flex-1 max-w-[200px]">
+                <ActionButtons canPass={canPass} canShoot={canShoot} onPass={doPass} onShoot={doShoot} layout="sidebar" />
+              </div>
+            </div>
+          )}
 
           {/* Start overlay */}
           {!started && !result && (
