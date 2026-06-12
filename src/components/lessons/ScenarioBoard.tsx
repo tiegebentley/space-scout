@@ -47,6 +47,20 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
   );
   const arrowId = scenario.answer.mode === "arrow" ? scenario.answer.objectId : null;
 
+  // Choices are SHUFFLED for display — lesson authors write the correct option
+  // first by convention, so without this the right answer would always be the
+  // top button. Each entry keeps its ORIGINAL index for grading/selection.
+  // Memoized so the order is stable for the life of the attempt; a retry
+  // remount or scenario change reshuffles.
+  const shuffledChoices = useMemo(() => {
+    const arr = (scenario.choices ?? []).map((c, i) => ({ c, i }));
+    for (let k = arr.length - 1; k > 0; k--) {
+      const j = Math.floor(Math.random() * (k + 1));
+      [arr[k], arr[j]] = [arr[j], arr[k]];
+    }
+    return arr;
+  }, [scenario]);
+
   const [objects, setObjects] = useState<BoardObject[]>(() => scenario.board.objects.map((o) => ({ ...o })));
   const [correct, setCorrect] = useState(false);
   const [reveal, setReveal] = useState(false);
@@ -370,7 +384,7 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
       {/* Choice buttons */}
       {mode === "choice" && scenario.choices && (
         <div className="grid gap-2">
-          {scenario.choices.map((c, i) => (
+          {shuffledChoices.map(({ c, i }) => (
             <button
               key={i}
               onClick={() => onPickChoice(i)}
