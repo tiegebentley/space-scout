@@ -1,0 +1,171 @@
+// SHARE THE BALL — Lesson 7: "Talk and Make Shapes"
+// The team layer: your voice is your teammate's extra pair of eyes ("Man on!
+// Touch it left!" / "Turn!"), and shapes are the answers to pressure — lines
+// with angles, the triangle, and the diamond around a defender.
+import type { Lesson } from "@/types/lessons";
+
+export const TALK_AND_SHAPES_LESSON: Lesson = {
+  id: "talk-and-shapes",
+  title: "Talk and Make Shapes",
+  description: "Your voice is your teammate's extra eyes — and shapes are the answers to pressure.",
+  difficulty: "intermediate",
+  category: "positioning",
+  steps: [
+    {
+      kind: "explain",
+      title: "Eyes in the back of their head — that's you",
+      body: "Your teammate receiving the ball can't see behind themselves. You CAN. So talk! 'Man on!' means pressure is coming. 'Turn!' means they have space to face forward. 'Touch it left!' tells them exactly where the escape is. And while you talk, your team holds its SHAPE — never flat lines, always lines with ANGLES. A triangle gives the ball two ways out; a diamond around a defender gives it three: around, through, or over. When everyone sees the shape, nobody panics.",
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ts-man-on",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "intermediate",
+        youAre: "home",
+        attackDir: "right",
+        question: "#6 is about to receive — and a defender is sneaking in from #6's LEFT, where they can't see. You CAN see it. What do you shout?",
+        instruction: "Pick the call.",
+        optimalNote: "\"Man on — touch it right!\" You just gave #6 eyes in the back of their head.",
+        explanation: "The best call tells your teammate two things at once: where the DANGER is and where the ESCAPE is. 'Man on — touch it right!' warns about the press AND points to the open side. Silence leaves your teammate blind; a vague shout only does half the job.",
+        nudge: "Tell them about the danger AND where the space is.",
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "\"Man on! Touch it RIGHT!\" — warn them and point to the escape", correct: true },
+          { text: "Nothing — talking during games is rude", correct: false },
+          { text: "\"SHOOT!\" — even though we're next to our own goal", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ts1-gk", type: "player", x: 70, y: 310, team: "home", label: "1" },
+            { id: "ts1-p6", type: "player", x: 330, y: 310, team: "home", label: "6" },
+            { id: "ts1-p7", type: "player", x: 450, y: 480, team: "home", label: "7" },
+            { id: "ts1-p11", type: "player", x: 450, y: 150, team: "home", label: "11" },
+            { id: "ts1-p10", type: "player", x: 560, y: 310, team: "home", label: "10" },
+            { id: "ts1-a10", type: "player", x: 380, y: 200, team: "away", label: "10" },
+            { id: "ts1-a6", type: "player", x: 620, y: 310, team: "away", label: "6" },
+            { id: "ts1-ball", type: "ball", x: 95, y: 310 },
+            { id: "ts1-arr1", type: "arrow", x: 210, y: 310, x1: 110, y1: 310, x2: 305, y2: 310, color: "#2563eb", style: "pass" },
+            { id: "ts1-arr2", type: "arrow", x: 360, y: 245, x1: 385, y1: 210, x2: 340, y2: 285, color: "#dc2626", style: "run" },
+          ],
+        },
+      },
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ts-turn",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "intermediate",
+        youAre: "home",
+        attackDir: "right",
+        question: "Same moment, different picture: this time NOBODY is behind #6 — acres of space to play forward. What's your call?",
+        instruction: "Pick the call.",
+        optimalNote: "\"TURN!\" — #6 spins, faces forward, and attacks the open field.",
+        explanation: "'Turn!' is the magic word that means: no one is behind you — face forward NOW. Without it, #6 might play safe and backwards even though the field is wide open. Right call, right moment: 'man on' protects the ball, 'turn' attacks with it.",
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "\"TURN!\" — there's no pressure, face forward and attack", correct: true },
+          { text: "\"Man on!\" — even though no one is near them", correct: false },
+          { text: "\"Pass it back!\" — always play backwards no matter what", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ts2-gk", type: "player", x: 70, y: 310, team: "home", label: "1" },
+            { id: "ts2-p6", type: "player", x: 330, y: 310, team: "home", label: "6" },
+            { id: "ts2-p7", type: "player", x: 450, y: 480, team: "home", label: "7" },
+            { id: "ts2-p11", type: "player", x: 450, y: 150, team: "home", label: "11" },
+            { id: "ts2-p10", type: "player", x: 590, y: 310, team: "home", label: "10" },
+            { id: "ts2-a6", type: "player", x: 750, y: 310, team: "away", label: "6" },
+            { id: "ts2-a7", type: "player", x: 720, y: 460, team: "away", label: "7" },
+            { id: "ts2-ball", type: "ball", x: 95, y: 310 },
+            { id: "ts2-arr1", type: "arrow", x: 210, y: 310, x1: 110, y1: 310, x2: 305, y2: 310, color: "#2563eb", style: "pass" },
+          ],
+        },
+      },
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ts-which-shape",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "intermediate",
+        youAre: "home",
+        attackDir: "right",
+        question: "Look at the two blue groups. The flat LINE gets its pass blocked by one defender. Which shape always gives the ball two ways out?",
+        instruction: "Pick the shape that beats pressure.",
+        optimalNote: "The triangle. Lines get blocked; angles never do.",
+        explanation: "In a flat line, one defender can stand in the lane and block everything — there's only one straight path. A TRIANGLE bends the field: two lanes, two angles, and the defender must choose. This is why coaches say 'lines with angles' — every pass should have a second door.",
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "The triangle — the defender can only ever block one of two lanes", correct: true },
+          { text: "The flat line — one defender blocks it all, but it looks tidy", correct: false },
+          { text: "The bunch — everyone stands next to the ball to help", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ts3-l1", type: "player", x: 250, y: 150, team: "home", label: "6" },
+            { id: "ts3-l2", type: "player", x: 430, y: 150, team: "home", label: "7" },
+            { id: "ts3-l3", type: "player", x: 610, y: 150, team: "home", label: "10" },
+            { id: "ts3-ld", type: "player", x: 340, y: 150, team: "away", label: "2" },
+            { id: "ts3-t1", type: "player", x: 300, y: 430, team: "home", label: "11" },
+            { id: "ts3-t2", type: "player", x: 540, y: 360, team: "home", label: "9" },
+            { id: "ts3-t3", type: "player", x: 540, y: 500, team: "home", label: "8" },
+            { id: "ts3-td", type: "player", x: 460, y: 430, team: "away", label: "3" },
+            { id: "ts3-ball1", type: "ball", x: 272, y: 150 },
+            { id: "ts3-ball2", type: "ball", x: 322, y: 430 },
+          ],
+        },
+      },
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ts-diamond",
+        format: "5v5-1-2-1",
+        type: "positioning",
+        difficulty: "intermediate",
+        youAre: "home",
+        attackDir: "right",
+        question: "#11 has the ball and a defender in front. Build a DIAMOND around the defender — so the ball can go around, through, or over!",
+        instruction: "Drag #6 above, #7 below, and #10 beyond the defender.",
+        optimalNote: "Diamond complete: around (top or bottom), through (the middle), or over (to the far point). Three doors open.",
+        explanation: "The diamond is the king of rondo shapes: a teammate on each side of the defender gives you AROUND, and the far point gives you THROUGH or OVER. Whatever the defender does, at least two doors stay open. Triangles are good; diamonds are better.",
+        nudges: [
+          "One teammate above the defender, one below.",
+          "The last teammate goes BEYOND the defender — the far point of the diamond.",
+        ],
+        answer: { mode: "move", objectIds: ["ts4-p6", "ts4-p7", "ts4-p10"] },
+        zones: {
+          "ts4-p6": { x: 420, y: 130, w: 160, h: 120 },
+          "ts4-p7": { x: 420, y: 370, w: 160, h: 120 },
+          "ts4-p10": { x: 620, y: 240, w: 150, h: 140 },
+        },
+        relations: {
+          "ts4-p6": [{ type: "oppositeSideY", relativeTo: "ts4-p7" }],
+          "ts4-p7": [{ type: "oppositeSideY", relativeTo: "ts4-p6" }],
+          "ts4-p10": [{ type: "mustBeAhead", relativeTo: "ts4-a2", margin: 60 }],
+        },
+        optimals: {
+          "ts4-p6": { x: 500, y: 185 },
+          "ts4-p7": { x: 500, y: 435 },
+          "ts4-p10": { x: 685, y: 310 },
+        },
+        choices: null,
+        board: {
+          objects: [
+            { id: "ts4-p11", type: "player", x: 340, y: 310, team: "home", label: "11" },
+            { id: "ts4-p6", type: "player", x: 420, y: 300, team: "home", label: "6" },
+            { id: "ts4-p7", type: "player", x: 430, y: 330, team: "home", label: "7" },
+            { id: "ts4-p10", type: "player", x: 470, y: 280, team: "home", label: "10" },
+            { id: "ts4-a2", type: "player", x: 510, y: 310, team: "away", label: "2" },
+            { id: "ts4-ball", type: "ball", x: 362, y: 310 },
+          ],
+        },
+      },
+    },
+  ],
+};
