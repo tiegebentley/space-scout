@@ -46,6 +46,8 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
     (step.kind === "scenario" && resolved) ||
     (step.kind === "live-scenario" && objectiveMet);
 
+  const isLastStep = stepIdx >= total - 1;
+
   const goNext = useCallback(() => {
     if (stepIdx >= total - 1) return;
     setResolved(false);
@@ -64,9 +66,14 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   const score = useMemo(() => Object.values(results).filter(Boolean).length, [results]);
   const pct = scenarioCount > 0 ? Math.round((score / scenarioCount) * 100) : 100;
 
-  const finishToSummary = useCallback(() => {
+  // Finishing a lesson WITHOUT a final play step used to dead-end: "Next" on
+  // the last step was a no-op and completion was never recorded. Now the last
+  // step's button becomes "Complete Lesson" → records the lesson and shows the
+  // summary (which links back to the lessons list).
+  const finishLesson = useCallback(() => {
+    recordLesson(lesson.id, pct);
     setShowSummary(true);
-  }, []);
+  }, [lesson.id, pct, recordLesson]);
 
   const launchGame = useCallback(() => {
     if (step.kind !== "play") return;
@@ -168,7 +175,7 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
               ▶ Start the live game
             </TapButton>
             {scenarioCount > 0 && (
-              <TapButton onTap={finishToSummary} className="w-full mt-2 rounded-xl bg-white/15 text-white font-bold text-sm py-2.5 cursor-pointer hover:bg-white/25">
+              <TapButton onTap={finishLesson} className="w-full mt-2 rounded-xl bg-white/15 text-white font-bold text-sm py-2.5 cursor-pointer hover:bg-white/25">
                 See my score
               </TapButton>
             )}
@@ -182,13 +189,16 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
               {stepIdx === 0 ? "Exit" : "Back"}
             </TapButton>
             <TapButton
-              onTap={goNext}
+              onTap={isLastStep ? finishLesson : goNext}
               disabled={!canAdvance}
-              className="flex-1 rounded-xl px-4 py-2.5 text-sm font-extrabold text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default bg-[#2E6FE0] hover:bg-[#2961c9]"
+              className={clsx(
+                "flex-1 rounded-xl px-4 py-2.5 text-sm font-extrabold text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default",
+                isLastStep && canAdvance ? "bg-[#2B8A4E] hover:bg-[#247a43]" : "bg-[#2E6FE0] hover:bg-[#2961c9]"
+              )}
             >
               {step.kind === "scenario" && !resolved ? "Answer to continue…"
                 : step.kind === "live-scenario" && !objectiveMet ? "Complete the objective…"
-                : "Next"}
+                : isLastStep ? "Complete Lesson ✓" : "Next"}
             </TapButton>
           </div>
         )}
