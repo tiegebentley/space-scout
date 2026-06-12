@@ -286,14 +286,39 @@ export class GameEngine {
   // outside, or cut inside) instead of hugging the inside line.
   private carryLaneX(p: Player): number {
     const rule = this.activeZoneRuleFor(p);
-    if (!rule || (rule.movement ?? "roam") === "free") {
+    let lo: number, hi: number;
+    if (rule && (rule.movement ?? "roam") !== "free") {
+      const xMin = L + (R - L) * rule.xMin;
+      const xMax = L + (R - L) * rule.xMax;
+      const inset = Math.min(18, (xMax - xMin) / 2);
+      lo = xMin + inset; hi = xMax - inset;
+    } else if (p.home.role === "wide" && !p.isUser) {
+      // No zone box, but wingers still carry inside their width channel —
+      // aiming dead-center (W/2) makes them fight the channel edge every frame
+      // and stall there. In the final third the INSIDE edge relaxes toward the
+      // near post so the carry angles at the goal, not the corner flag.
+      const key = this.roleKeyOf(p);
+      const wb = key === "lw" ? this.wingerBounds.lw : this.wingerBounds.rw;
+      let fLo = wb.min, fHi = wb.max;
+      const goalLine = p.side === "us" ? TOP : BOT;
+      const finalThird = Math.abs(p.y - goalLine) < (BOT - TOP) / 3;
+      // Relax into the HALF-SPACE (near-post channel), never dead center —
+      // capped short of the goal frame so wingers angle at goal without
+      // abandoning the wing entirely.
+      if (finalThird) {
+        if (key === "lw") fHi = Math.min(0.42, fHi + 0.2);
+        else fLo = Math.max(0.58, fLo - 0.2);
+      }
+      // Winger bounds are team-relative (0 = own left touchline) — mirror to
+      // screen coords for "them", same convention as the team-shape engine.
+      const sLo = p.side === "them" ? 1 - fHi : fLo;
+      const sHi = p.side === "them" ? 1 - fLo : fHi;
+      lo = L + (R - L) * sLo + 14;
+      hi = L + (R - L) * sHi - 14;
+    } else {
       p.carryTimer = 0; // forget any lane so it re-picks next time we're boxed
       return W / 2;
     }
-    const xMin = L + (R - L) * rule.xMin;
-    const xMax = L + (R - L) * rule.xMax;
-    const inset = Math.min(18, (xMax - xMin) / 2);
-    const lo = xMin + inset, hi = xMax - inset;
 
     // Is the current lane blocked? (a defender close on the path ahead)
     const blocked = p.carryLaneX !== undefined &&
@@ -955,7 +980,7 @@ export class GameEngine {
     const type = this.restart?.type;
     const taker = this.restart?.taker ?? (this.poss === "us" ? this.mates[0] : this.opps[0]);
     this.giveBall(taker, true);
-    this.passCooldown = Math.round(30 / this.PACE);
+    this.passCooldown = Math.round(30 / Math.max(0.5, this.PACE));
     this.emitPill(this.poss === "us" ? "Your ball" : "Reds attacking", this.poss);
     this.restart = null;
     this.emit({ type: "stateChange", state: "live" });
@@ -1100,8 +1125,45 @@ export class GameEngine {
 
     this.giveBall(p);
     this.stealImmunity = 90;
-    this.passCooldown = Math.round(18 / this.PACE);
+    this.passCooldown = Math.round(18 / Math.max(0.5, this.PACE));
+
+    // Clean getaway: commit the new carrier to the single most open escape
+    // lane for a short window. Decided ONCE, here — the per-frame carrier
+    // logic would otherwise re-litigate the direction every tick inside the
+    // post-tackle crowd and the steal turns into a stuck, twitchy scramble.
+    if (p !== this.you && !p.gk) {
+      p.escapeAng = this.bestEscapeAngle(p);
+      p.escapeTimer = Math.round(42 / Math.max(0.5, this.PACE));
+      p.carryTimer = 0;   // re-pick the carry lane once the escape settles
+      p.evadeTimer = 0;
+    }
     this.emitPill(p.side === "us" ? "Your ball" : "Reds attacking", p.side);
+  }
+
+  // Sample directions around a player who just won the ball and pick the most
+  // open one, with a bias toward carrying at the attacking half — so the first
+  // touch after a steal is a purposeful carry, not a retreat (unless retreat is
+  // genuinely the only open lane).
+  private bestEscapeAngle(p: Player): number {
+    const en = this.enemiesOf(p.side);
+    const goalY = p.side === "us" ? TOP : BOT;
+    const goalAng = Math.atan2(goalY - p.y, W / 2 - p.x);
+    let best = goalAng, bestScore = -1e9;
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const tx = clamp(p.x + Math.cos(ang) * 120, L + 20, R - 20);
+      const ty = clamp(p.y + Math.sin(ang) * 120, TOP + 20, BOT - 20);
+      let open = 1e9;
+      for (const e of en) {
+        if (e.gk || (e.frozenTimer && e.frozenTimer > 0)) continue;
+        open = Math.min(open, segDist(e.x, e.y, p.x, p.y, tx, ty));
+      }
+      open = Math.min(open, 140);
+      const fwd = Math.cos(ang - goalAng); // 1 = toward the attack, -1 = retreat
+      const score = open + fwd * 36;
+      if (score > bestScore) { bestScore = score; best = ang; }
+    }
+    return best;
   }
 
   // ---------- Scoring / availability ----------
@@ -1231,6 +1293,21 @@ export class GameEngine {
         // the inside is covered and cut in when the outside is covered.
         const goalX = this.carryLaneX(m);
 
+        // Post-steal escape: for a short window after winning the ball, drive
+        // the one open lane committed in winBall(). This is what makes a steal
+        // LOOK like a steal — one clean carry out of the post-tackle crowd
+        // instead of a per-frame argument with the congested/dodge logic below
+        // (which flips heading with whichever defender is momentarily closest).
+        if (m.escapeTimer && m.escapeTimer > 0) {
+          m.escapeTimer--;
+          const ang = m.escapeAng ?? Math.atan2(goalY - m.y, goalX - m.x);
+          const csp = 2.4 * this.PACE;
+          m.x = clamp(m.x + Math.cos(ang) * csp, L + 14, R - 14);
+          m.y = clamp(m.y + Math.sin(ang) * csp, TOP + 14, BOT - 14);
+          m.face = ang;
+          continue;
+        }
+
         const en = this.enemiesOf(m.side);
         let nearbyEnemies = 0;
         let closestDist = 1e9, closestDx = 0, closestDy = 0;
@@ -1242,15 +1319,40 @@ export class GameEngine {
           if (dd < closestDist) { closestDist = dd; closestDx = m.x - e.x; closestDy = m.y - e.y; }
         }
 
-        // Congested: hold and let pass logic fire
+        // Congested: back out of traffic and let pass logic fire. The evade
+        // heading is COMMITTED for a beat — re-deriving it every frame from the
+        // momentarily-closest defender flips the carrier back and forth (the
+        // "panic wiggle"), and since the ball rides the carrier's facing, that
+        // twitch reads as the ball spazzing out. Candidates also include the
+        // two lateral lanes so the escape keeps some attacking shape instead of
+        // always backing straight up.
         if (nearbyEnemies >= 2 && closestDist < 55) {
-          const awayAng = Math.atan2(closestDy, closestDx);
-          m.face = awayAng;
-          const csp = 0.6 * this.PACE;
-          m.x += Math.cos(awayAng) * csp;
-          m.y += Math.sin(awayAng) * csp;
+          if (!m.evadeTimer || m.evadeTimer <= 0) {
+            const awayAng = Math.atan2(closestDy, closestDx);
+            const goalAngC = Math.atan2(goalY - m.y, goalX - m.x);
+            const cands = [awayAng, goalAngC + Math.PI / 2, goalAngC - Math.PI / 2];
+            let bestA = awayAng, bestS = -1e9;
+            for (const a of cands) {
+              let open = 1e9;
+              for (const e of en) {
+                if (e.gk || (e.frozenTimer && e.frozenTimer > 0)) continue;
+                open = Math.min(open, segDist(e.x, e.y, m.x, m.y, m.x + Math.cos(a) * 90, m.y + Math.sin(a) * 90));
+              }
+              const s = Math.min(open, 90) + Math.cos(a - awayAng) * 18 + Math.cos(a - goalAngC) * 14;
+              if (s > bestS) { bestS = s; bestA = a; }
+            }
+            m.evadeAng = bestA;
+            m.evadeTimer = Math.round(16 / Math.max(0.5, this.PACE));
+          }
+          m.evadeTimer--;
+          const evade = m.evadeAng ?? Math.atan2(closestDy, closestDx);
+          m.face = evade;
+          const csp = 0.8 * this.PACE;
+          m.x += Math.cos(evade) * csp;
+          m.y += Math.sin(evade) * csp;
           continue;
         }
+        m.evadeTimer = 0;
 
         const toGoalAng = Math.atan2(goalY - m.y, goalX - m.x);
         let ax = Math.cos(toGoalAng);
@@ -1280,21 +1382,56 @@ export class GameEngine {
           }
         }
 
-        const al2 = Math.hypot(ax, ay) || 1;
+        // Turn-rate limit: steer toward the desired heading instead of snapping
+        // to it. The dodge math above can flip its preferred side frame to
+        // frame; without this cap that reads as a zig-zag stutter (and the ball,
+        // drawn off the carrier's facing, jitters with it).
+        const want = Math.atan2(ay, ax);
+        const cur = m.face ?? want;
+        let dAng = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
+        const maxTurn = 0.3 * this.PACE;
+        dAng = clamp(dAng, -maxTurn, maxTurn);
+        const head = cur + dAng;
         // Slow down when a defender is close to give more time to react/pass
         const speedMul = closestDist < 50 ? 0.7 : closestDist < 70 ? 0.85 : 1.0;
         const csp = 2.7 * this.PACE * speedMul;
-        m.x += (ax / al2) * csp;
-        m.y += (ay / al2) * csp;
-        m.face = Math.atan2(ay, ax);
+        m.x += Math.cos(head) * csp;
+        m.y += Math.sin(head) * csp;
+        m.face = head;
         continue;
       }
 
       const h = this.homeXY(m.side, m.home);
       let tx: number, ty: number;
+      let boxRun = false;
 
       if (attacking) {
-        if (m === ballChaser) {
+        // BOX RUNS: when a teammate is carrying WIDE in the attacking half, the
+        // coming cross needs bodies to aim at — the #10 attacks the near-post /
+        // penalty-spot area and the far-side winger hunts the far post. Checked
+        // BEFORE the support-runner branch (the #10 is usually the closest
+        // teammate to a wide carrier, so it would otherwise hijack the run) and
+        // triggered early enough that the runner ARRIVES as the carrier reaches
+        // the byline. Box runs are sprints (see speed below).
+        const roleKey = m.id.replace("us-", "").replace("them-", "");
+        const goalYm = m.side === "us" ? TOP : BOT;
+        const carrierWide = !!carrier && carrier.side === m.side && carrier !== m &&
+          Math.abs(carrier.x - W / 2) > GOAL_W &&
+          Math.abs(carrier.y - goalYm) < (BOT - TOP) / 2.4;
+        const crossSide = carrier ? (Math.sign(carrier.x - W / 2) || 1) : 1;
+        const isFarWinger = m.home.role === "wide" && Math.sign(m.x - W / 2) !== crossSide;
+
+        if (carrierWide && (roleKey === "fwd" || roleKey === "am")) {
+          // Near-post / penalty-spot arrival, shaded toward the cross.
+          tx = W / 2 + crossSide * BOX_HALF_W * 0.35;
+          ty = m.side === "us" ? goalYm + BOX_H * 0.7 : goalYm - BOX_H * 0.7;
+          boxRun = true;
+        } else if (carrierWide && isFarWinger) {
+          // Far-post run: the opposite winger attacks the back stick.
+          tx = W / 2 - crossSide * BOX_HALF_W * 0.55;
+          ty = m.side === "us" ? goalYm + BOX_H * 0.5 : goalYm - BOX_H * 0.5;
+          boxRun = true;
+        } else if (m === ballChaser) {
           // Support runner: find space ahead of the ball toward goal
           const refx = carrier?.x ?? this.ball.x;
           const refy = carrier?.y ?? this.ball.y;
@@ -1312,7 +1449,6 @@ export class GameEngine {
           tx = best.x; ty = best.y;
         } else {
           // TACTIC ENGINE: calculate position based on active tactic preset
-          const roleKey = m.id.replace("us-", "").replace("them-", "");
           const shape = m.side === "us" ? this.shapeUs : this.shapeThem;
           const ctx = TeamShapeEngine.buildContext(
             m.side, true, this.ball.x, this.ball.y,
@@ -1400,7 +1536,8 @@ export class GameEngine {
       const roamed = offBallActive || (zr ? this.roamInZone(m, zr) : false);
 
       if (!roamed) {
-        const sp = (m === ballChaser ? (attacking ? 2.1 : 2.8) : (attacking ? 1.8 : 1.6)) * this.PACE * (backoff ? 0.5 : 1);
+        // Box runs are sprints — the runner has to ARRIVE before the cross.
+        const sp = (boxRun ? 2.6 : m === ballChaser ? (attacking ? 2.1 : 2.8) : (attacking ? 1.8 : 1.6)) * this.PACE * (backoff ? 0.5 : 1);
         const ang = Math.atan2(ty - m.y, tx - m.x);
         const dd = Math.hypot(tx - m.x, ty - m.y);
         if (dd > 1.5) {
@@ -1858,21 +1995,41 @@ export class GameEngine {
     const inBox = (p: Player) =>
       Math.abs(p.x - W / 2) <= BOX_HALF_W &&
       (carrier.side === "us" ? p.y <= boxFarY : p.y >= boxFarY);
+    // "Arriving": close enough to run onto a ball dropped into the box. Without
+    // this tier a cross only ever fires when someone is ALREADY standing inside
+    // the box — which is rare — so wide carriers used to reach the byline and
+    // just hold the ball.
+    const arriving = (p: Player) =>
+      Math.abs(p.x - W / 2) <= BOX_HALF_W + 70 &&
+      (carrier.side === "us" ? p.y <= boxFarY + BOX_H : p.y >= boxFarY - BOX_H);
 
     const team = carrier.side === "us" ? this.teamUs : this.teamThem;
     let best: Player | null = null;
     let bestScore = -Infinity;
+    let bestInBox = false;
     for (const m of team) {
       if (m === carrier || m.gk || (m.frozenTimer && m.frozenTimer > 0)) continue;
-      if (!inBox(m)) continue;
-      // Prefer central, unmarked targets — a header/tap from the spot.
+      const strict = inBox(m);
+      if (!strict && !arriving(m)) continue;
+      // Prefer central, unmarked targets — a header/tap from the spot. A target
+      // already inside the box beats an arriving one.
       const central = 1 - Math.min(1, Math.abs(m.x - W / 2) / BOX_HALF_W);
       const space = clamp(this.nearestEnemy(m.x, m.y, m.side) / 60, 0, 1);
-      const score = central * 0.6 + space * 0.4;
-      if (score > bestScore) { bestScore = score; best = m; }
+      const score = central * 0.6 + space * 0.4 + (strict ? 0.5 : 0);
+      if (score > bestScore) { bestScore = score; best = m; bestInBox = strict; }
     }
     if (!best) return false;
-    this.doPass(carrier, best);
+    if (bestInBox) {
+      this.doPass(carrier, best);
+    } else {
+      // Lead the runner: drop the ball into the box between them and the goal
+      // frame and let them run onto it (untargeted launch — nearest player
+      // collects, so a defender can still cut it out like any other pass).
+      const tx = clamp((best.x + W / 2) / 2, GX0 - 30, GX1 + 30);
+      const ty = carrier.side === "us" ? goalY + BOX_H * 0.55 : goalY - BOX_H * 0.55;
+      this.launchBall(carrier, tx, ty, "pass", null);
+      this.passCooldown = Math.round(rand(32, 64) / Math.max(0.5, this.PACE));
+    }
     this.emitCoach(
       carrier.side === "us"
         ? "Cross into the box — get a runner on the end of it!"
@@ -1980,10 +2137,12 @@ export class GameEngine {
       // In a shooting angle and close enough? Have a go.
       if (lateral < BOX_HALF_W && this.shouldShoot(carrier, true)) { this.aiShoot(carrier); return; }
       // Right on the byline with no cross/shot on: a near-post shot beats the
-      // corner. Otherwise fall through — carryLaneX will pull them inside.
+      // corner. Failing that, pull it back to the safest teammate (the cut-back)
+      // — anything beats camping in the corner with the ball.
       if (distToGoal < BOX_H * 0.7) {
         if (this.tryCross(carrier)) return;
         if (lateral < BOX_HALF_W) { this.aiShoot(carrier); return; }
+        if (this.tryRecycle(carrier)) return;
       }
     } else if (distToGoal < BOX_H * 0.7) {
       // Central carrier at the byline → shoot.
@@ -2096,7 +2255,11 @@ export class GameEngine {
       }
       if (toPlayer) {
         this.giveBall(toPlayer);
-        this.passCooldown = toPlayer === this.you ? 9999 : Math.round(rand(32, 64) / this.PACE);
+        // PACE floor like every other frame-count conversion: without it a slow
+        // game speed (PACE ~0.17) locks AI passing out for 3-6 SECONDS after
+        // every completed pass — receivers carried all the way to the byline
+        // unable to release the ball (the "winger sits in the corner" bug).
+        this.passCooldown = toPlayer === this.you ? 9999 : Math.round(rand(32, 64) / Math.max(0.5, this.PACE));
         if (toPlayer === this.you) {
           this.emitCoach("It's yours! Dribble into space, then Pass or Shoot.");
         }

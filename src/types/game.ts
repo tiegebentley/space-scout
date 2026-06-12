@@ -33,6 +33,15 @@ export interface Player {
   // blocked — so they don't hug the inside line. Engine-managed.
   carryLaneX?: number;
   carryTimer?: number;
+  // Post-steal escape: a carry direction committed once in winBall() and held
+  // for a short window, so a steal turns into one clean carry out of the crowd
+  // instead of a per-frame direction fight. Engine-managed.
+  escapeAng?: number;
+  escapeTimer?: number;
+  // Committed heading while the carrier backs out of congestion, held for a
+  // beat so it doesn't flip with whichever defender is momentarily closest.
+  evadeAng?: number;
+  evadeTimer?: number;
 }
 
 export type PlayerRole =
