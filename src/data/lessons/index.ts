@@ -15,8 +15,17 @@ import { ESCAPE_PRESS_LESSON } from "./escape-press";
 import { WIN_IT_BACK_LESSON } from "./win-it-back";
 import { TALK_AND_SHAPES_LESSON } from "./talk-and-shapes";
 import { ITS_A_RONDO_LESSON } from "./its-a-rondo";
+import { LW_MODULE_LESSONS } from "./lw-module";
+import { RW_MODULE_LESSONS } from "./rw-module";
+import { AM_MODULE_LESSONS } from "./am-module";
+
+// Position modules register as id→lesson entries like everything else.
+const POSITION_MODULE_LESSONS = Object.fromEntries(
+  [...LW_MODULE_LESSONS, ...RW_MODULE_LESSONS, ...AM_MODULE_LESSONS].map((l) => [l.id, l]),
+);
 
 export const LESSONS: Record<string, Lesson> = {
+  ...POSITION_MODULE_LESSONS,
   [MEET_SHAPE_LESSON.id]: MEET_SHAPE_LESSON,
   [SPACING_LESSON.id]: SPACING_LESSON,
   [RESTARTS_LESSON.id]: RESTARTS_LESSON,
@@ -93,6 +102,33 @@ export const COURSES: Course[] = [
       "talk-and-shapes",
       "its-a-rondo",
     ],
+  },
+  {
+    id: "lw-11-module",
+    title: "The Left Winger — #11",
+    icon: "⚡",
+    level: "beginner",
+    description:
+      "Own the left side! Five lessons on the #11: where the winger lives (wide!), why width stretches defenses, receiving with an open body, being brave 1v1, and the end product — cut-backs, far-post runs, and the sprint back.",
+    lessonIds: ["lw-meet", "lw-stay-wide", "lw-receive", "lw-take-on", "lw-complete"],
+  },
+  {
+    id: "rw-7-module",
+    title: "The Right Winger — #7",
+    icon: "🏹",
+    level: "beginner",
+    description:
+      "Own the right side! Five lessons on the #7: living on the right touchline, the far-side switch secret, give-and-gos with your #10, winning your 1v1, and finishing the job at the far post — then sprinting back.",
+    lessonIds: ["rw-meet", "rw-the-switch", "rw-give-and-go", "rw-take-on", "rw-complete"],
+  },
+  {
+    id: "am-10-module",
+    title: "The Attacking Mid — #10",
+    icon: "🎨",
+    level: "intermediate",
+    description:
+      "Be the creator! Five lessons on the #10: living between the lines, finding pockets, the final pass that sets runners free, turning to shoot, and being the engine that connects everything — including the first press.",
+    lessonIds: ["am-meet", "am-find-pocket", "am-final-pass", "am-turn-and-shoot", "am-engine"],
   },
   {
     id: "5v5-beginner",
