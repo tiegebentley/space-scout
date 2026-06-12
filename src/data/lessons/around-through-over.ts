@@ -1,0 +1,156 @@
+// SHARE THE BALL — Lesson 4: "Around, Through, or Over"
+// The three methods for breaking pressure. Each scenario shows a different
+// "wall" and the player picks the right door: AROUND (pass to the open side),
+// THROUGH (split the gap between defenders), OVER (lofted ball into the big
+// space behind a tight press). Closes with a recap quiz.
+import type { Lesson } from "@/types/lessons";
+
+export const AROUND_THROUGH_OVER_LESSON: Lesson = {
+  id: "around-through-over",
+  title: "Around, Through, or Over",
+  description: "Every wall of defenders has three doors. Learn to spot which one is open.",
+  difficulty: "beginner",
+  category: "decision",
+  steps: [
+    {
+      kind: "explain",
+      title: "Three doors past every wall",
+      body: "When defenders make a wall between you and where you want to go, there are exactly three ways past it. AROUND — pass to a teammate on the open side of the wall. THROUGH — slide the ball through a gap between defenders. OVER — lift the ball over a tight wall into the space behind. None of them is 'best' — the open door changes every second. Your job is to read which one the defenders are giving you.",
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ato-around",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "beginner",
+        youAre: "home",
+        attackDir: "right",
+        question: "Two defenders make a wall in the middle, but #7 is wide open on the side. Which door is open?",
+        instruction: "Pick how to beat this wall.",
+        optimalNote: "Around! The wall covers the middle — so the ball travels along the side.",
+        explanation: "The defenders blocked the middle, but a wall can't cover the whole field. When a teammate is free on the side, play AROUND — the simplest door. The ball does the running, not you.",
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "AROUND — pass wide to #7 on the open side", correct: true },
+          { text: "THROUGH — force it between the two defenders standing together", correct: false },
+          { text: "Dribble straight into the wall and hope", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ato1-p6", type: "player", x: 330, y: 310, team: "home", label: "6" },
+            { id: "ato1-p11", type: "player", x: 470, y: 170, team: "home", label: "11" },
+            { id: "ato1-p7", type: "player", x: 470, y: 500, team: "home", label: "7" },
+            { id: "ato1-p10", type: "player", x: 640, y: 310, team: "home", label: "10" },
+            { id: "ato1-a6", type: "player", x: 470, y: 280, team: "away", label: "6" },
+            { id: "ato1-a10", type: "player", x: 470, y: 350, team: "away", label: "10" },
+            { id: "ato1-a11", type: "player", x: 560, y: 180, team: "away", label: "11" },
+            { id: "ato1-ball", type: "ball", x: 352, y: 310 },
+          ],
+        },
+      },
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ato-through",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "beginner",
+        youAre: "home",
+        attackDir: "right",
+        question: "Now the defenders split apart and #10 is waiting in the pocket BETWEEN them. Which door is open?",
+        instruction: "Pick how to beat this wall.",
+        optimalNote: "Through! The wall left a gap — slide the ball straight through it.",
+        explanation: "When defenders spread out to cover the sides, they open a gap in the middle. That's the THROUGH door: a firm pass on the ground, between the defenders, into your teammate's feet. Through passes break the most pressure — the whole wall is beaten in one touch.",
+        nudge: "Look at the space BETWEEN the two defenders.",
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "THROUGH — slide it in the gap between the defenders to #10", correct: true },
+          { text: "AROUND — even though both sides are covered now", correct: false },
+          { text: "Kick it out of bounds to be safe", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ato2-p6", type: "player", x: 330, y: 310, team: "home", label: "6" },
+            { id: "ato2-p11", type: "player", x: 450, y: 150, team: "home", label: "11" },
+            { id: "ato2-p7", type: "player", x: 450, y: 480, team: "home", label: "7" },
+            { id: "ato2-p10", type: "player", x: 620, y: 310, team: "home", label: "10" },
+            { id: "ato2-a6", type: "player", x: 470, y: 220, team: "away", label: "6" },
+            { id: "ato2-a10", type: "player", x: 470, y: 400, team: "away", label: "10" },
+            { id: "ato2-a11", type: "player", x: 490, y: 130, team: "away", label: "11" },
+            { id: "ato2-a7", type: "player", x: 490, y: 500, team: "away", label: "7" },
+            { id: "ato2-ball", type: "ball", x: 352, y: 310 },
+          ],
+        },
+      },
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ato-over",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "intermediate",
+        youAre: "home",
+        attackDir: "right",
+        question: "The defenders press TIGHT — no side lane, no gap. But look at all that space behind them, where #10 can run. Which door is open?",
+        instruction: "Pick how to beat this wall.",
+        optimalNote: "Over! A tight wall leaves the land behind it empty.",
+        explanation: "When the press gets really tight, around and through are closed — but a tight wall can't protect the space BEHIND itself. Lift the ball OVER the press into that space for a running teammate. The braver their press, the bigger the prize behind it.",
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "OVER — chip it over the press into the space behind for #10", correct: true },
+          { text: "THROUGH — there's no gap, but try anyway", correct: false },
+          { text: "Stand on the ball until the referee helps", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ato3-p6", type: "player", x: 300, y: 310, team: "home", label: "6" },
+            { id: "ato3-p11", type: "player", x: 330, y: 180, team: "home", label: "11" },
+            { id: "ato3-p7", type: "player", x: 330, y: 440, team: "home", label: "7" },
+            { id: "ato3-p10", type: "player", x: 540, y: 310, team: "home", label: "10" },
+            { id: "ato3-a6", type: "player", x: 380, y: 270, team: "away", label: "6" },
+            { id: "ato3-a10", type: "player", x: 380, y: 350, team: "away", label: "10" },
+            { id: "ato3-a11", type: "player", x: 410, y: 200, team: "away", label: "11" },
+            { id: "ato3-a7", type: "player", x: 410, y: 420, team: "away", label: "7" },
+            { id: "ato3-ball", type: "ball", x: 322, y: 310 },
+            { id: "ato3-arr", type: "arrow", x: 650, y: 310, x1: 560, y1: 310, x2: 740, y2: 310, color: "#2563eb", style: "run" },
+          ],
+        },
+      },
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ato-recap",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "beginner",
+        youAre: "home",
+        attackDir: "right",
+        question: "Quiz time! Your teammate shouts \"It's a rondo!\" — what are your THREE ways past pressure?",
+        instruction: "Pick the three doors.",
+        optimalNote: "Around, through, or over — read the wall, pick the open door.",
+        explanation: "Every pressure moment has the same three answers: play AROUND the wall, THROUGH the gap, or OVER the top. Say it to yourself in games — it turns panic into a checklist.",
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "Around, Through, or Over", correct: true },
+          { text: "Kick, Run, and Hope", correct: false },
+          { text: "Backwards, Sideways, and Out of Bounds", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ato4-p6", type: "player", x: 330, y: 310, team: "home", label: "6" },
+            { id: "ato4-p11", type: "player", x: 470, y: 170, team: "home", label: "11" },
+            { id: "ato4-p7", type: "player", x: 470, y: 470, team: "home", label: "7" },
+            { id: "ato4-p10", type: "player", x: 640, y: 310, team: "home", label: "10" },
+            { id: "ato4-a6", type: "player", x: 480, y: 280, team: "away", label: "6" },
+            { id: "ato4-a10", type: "player", x: 480, y: 350, team: "away", label: "10" },
+            { id: "ato4-ball", type: "ball", x: 352, y: 310 },
+          ],
+        },
+      },
+    },
+  ],
+};

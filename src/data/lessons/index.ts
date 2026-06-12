@@ -7,12 +7,37 @@ import { SPACING_LESSON } from "./spacing";
 import { MEET_SHAPE_LESSON } from "./meet-shape";
 import { RESTARTS_LESSON } from "./restarts";
 import { PLAYING_OUT_BACK_LESSON } from "./playing-out-back";
+import { RONDO_WHAT_LESSON } from "./rondo-what";
+import { GROUND_CONTROL_LESSON } from "./ground-control";
+import { RONDO_3V1_LESSON } from "./rondo-3v1";
+import { AROUND_THROUGH_OVER_LESSON } from "./around-through-over";
+import { ESCAPE_PRESS_LESSON } from "./escape-press";
+import { WIN_IT_BACK_LESSON } from "./win-it-back";
+import { TALK_AND_SHAPES_LESSON } from "./talk-and-shapes";
+import { ITS_A_RONDO_LESSON } from "./its-a-rondo";
+import { LW_MODULE_LESSONS } from "./lw-module";
+import { RW_MODULE_LESSONS } from "./rw-module";
+import { AM_MODULE_LESSONS } from "./am-module";
+
+// Position modules register as id→lesson entries like everything else.
+const POSITION_MODULE_LESSONS = Object.fromEntries(
+  [...LW_MODULE_LESSONS, ...RW_MODULE_LESSONS, ...AM_MODULE_LESSONS].map((l) => [l.id, l]),
+);
 
 export const LESSONS: Record<string, Lesson> = {
+  ...POSITION_MODULE_LESSONS,
   [MEET_SHAPE_LESSON.id]: MEET_SHAPE_LESSON,
   [SPACING_LESSON.id]: SPACING_LESSON,
   [RESTARTS_LESSON.id]: RESTARTS_LESSON,
   [PLAYING_OUT_BACK_LESSON.id]: PLAYING_OUT_BACK_LESSON,
+  [RONDO_WHAT_LESSON.id]: RONDO_WHAT_LESSON,
+  [GROUND_CONTROL_LESSON.id]: GROUND_CONTROL_LESSON,
+  [RONDO_3V1_LESSON.id]: RONDO_3V1_LESSON,
+  [AROUND_THROUGH_OVER_LESSON.id]: AROUND_THROUGH_OVER_LESSON,
+  [ESCAPE_PRESS_LESSON.id]: ESCAPE_PRESS_LESSON,
+  [WIN_IT_BACK_LESSON.id]: WIN_IT_BACK_LESSON,
+  [TALK_AND_SHAPES_LESSON.id]: TALK_AND_SHAPES_LESSON,
+  [ITS_A_RONDO_LESSON.id]: ITS_A_RONDO_LESSON,
 };
 
 export function getLesson(id: string): Lesson | undefined {
@@ -59,6 +84,51 @@ export const COURSES: Course[] = [
       "pilot-lesson-2",
       "pilot-lesson-3",
     ],
+  },
+  {
+    id: "share-the-ball",
+    title: "Share the Ball — Rondos",
+    icon: "🔺",
+    level: "beginner",
+    description:
+      "When you hit a wall, share the ball! An 8-lesson 5v5 journey for young players: first touch, triangles, playing around–through–over pressure, escaping the press, winning the ball back, talking, and making shapes — from your first rondo to real-game IQ.",
+    lessonIds: [
+      "rondo-what",
+      "ground-control",
+      "rondo-3v1",
+      "around-through-over",
+      "escape-the-press",
+      "win-it-back",
+      "talk-and-shapes",
+      "its-a-rondo",
+    ],
+  },
+  {
+    id: "lw-11-module",
+    title: "The Left Winger — #11",
+    icon: "⚡",
+    level: "beginner",
+    description:
+      "Own the left side! Five lessons on the #11: where the winger lives (wide!), why width stretches defenses, receiving with an open body, being brave 1v1, and the end product — cut-backs, far-post runs, and the sprint back.",
+    lessonIds: ["lw-meet", "lw-stay-wide", "lw-receive", "lw-take-on", "lw-complete"],
+  },
+  {
+    id: "rw-7-module",
+    title: "The Right Winger — #7",
+    icon: "🏹",
+    level: "beginner",
+    description:
+      "Own the right side! Five lessons on the #7: living on the right touchline, the far-side switch secret, give-and-gos with your #10, winning your 1v1, and finishing the job at the far post — then sprinting back.",
+    lessonIds: ["rw-meet", "rw-the-switch", "rw-give-and-go", "rw-take-on", "rw-complete"],
+  },
+  {
+    id: "am-10-module",
+    title: "The Attacking Mid — #10",
+    icon: "🎨",
+    level: "intermediate",
+    description:
+      "Be the creator! Five lessons on the #10: living between the lines, finding pockets, the final pass that sets runners free, turning to shoot, and being the engine that connects everything — including the first press.",
+    lessonIds: ["am-meet", "am-find-pocket", "am-final-pass", "am-turn-and-shoot", "am-engine"],
   },
   {
     id: "5v5-beginner",

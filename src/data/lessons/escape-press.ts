@@ -1,0 +1,150 @@
+// SHARE THE BALL — Lesson 5: "Escape the Press"
+// What to DO when the wall arrives: open body shape before the ball comes,
+// first touch away from the press, and the reset pass (bounce it back, keep
+// the ball, go again). Live finale: string passes together under a high press.
+import type { Lesson } from "@/types/lessons";
+
+export const ESCAPE_PRESS_LESSON: Lesson = {
+  id: "escape-the-press",
+  title: "Escape the Press",
+  description: "Open your body, touch away from pressure, and when nothing's on — reset and go again.",
+  difficulty: "intermediate",
+  category: "decision",
+  steps: [
+    {
+      kind: "explain",
+      title: "Pressure steals time — steal it back",
+      body: "A press is the other team trying to steal your TIME. You steal it back with three habits. ONE: before the ball arrives, open your body sideways so you can see the passer AND the field — and check over your shoulder. TWO: take your first touch AWAY from the pressure, with the inside of your foot. THREE: when every door is closed, don't panic — bounce the ball back to a teammate, move to a new angle, and go again. A backwards pass that keeps the ball beats a forward pass that loses it.",
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ep-open-body",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "intermediate",
+        youAre: "home",
+        attackDir: "right",
+        question: "The pass is on its way to #6. What should #6's BODY do before the ball even arrives?",
+        instruction: "Pick the best habit.",
+        optimalNote: "Open up and peek over your shoulder — now you know where the press is before the ball lands.",
+        explanation: "Great players answer the question 'who's near me?' BEFORE the ball arrives. Open your body sideways-on so one look shows you the passer and the field, and take a quick peek over your shoulder. Face the passer flat-on and the whole field disappears behind you — along with the defender sneaking in.",
+        nudge: "Can you see the field AND the ball at the same time?",
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "Open sideways-on and check over my shoulder for pressure", correct: true },
+          { text: "Face the passer straight on and watch only the ball", correct: false },
+          { text: "Turn away and start running before the ball gets to me", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ep1-gk", type: "player", x: 70, y: 310, team: "home", label: "1" },
+            { id: "ep1-p6", type: "player", x: 330, y: 310, team: "home", label: "6" },
+            { id: "ep1-p7", type: "player", x: 430, y: 480, team: "home", label: "7" },
+            { id: "ep1-p11", type: "player", x: 430, y: 150, team: "home", label: "11" },
+            { id: "ep1-p10", type: "player", x: 560, y: 310, team: "home", label: "10" },
+            { id: "ep1-a10", type: "player", x: 430, y: 350, team: "away", label: "10" },
+            { id: "ep1-a6", type: "player", x: 620, y: 310, team: "away", label: "6" },
+            { id: "ep1-ball", type: "ball", x: 95, y: 310 },
+            { id: "ep1-arr", type: "arrow", x: 210, y: 310, x1: 110, y1: 310, x2: 305, y2: 310, color: "#2563eb", style: "pass" },
+          ],
+        },
+      },
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ep-reset",
+        format: "5v5-1-2-1",
+        type: "decision",
+        difficulty: "intermediate",
+        youAre: "home",
+        attackDir: "right",
+        question: "#6 receives with their back to the field and a defender pressing TIGHT from behind. Around, through, and over all look closed. What now?",
+        instruction: "Pick the smartest escape.",
+        optimalNote: "Reset! Bounce it back to the keeper, spin into new space, and the rondo starts again.",
+        explanation: "When you're pressed from behind, turning into the defender is how the ball gets stolen. The smart move is the RESET: one touch back to your keeper (or nearest teammate), then immediately move to a new angle. You didn't lose anything — the ball is still yours and the press has to start all over again.",
+        nudges: [
+          "Turning into a tight defender = stolen ball.",
+          "Who is behind you, totally free, ready to bounce it back to?",
+        ],
+        answer: { mode: "choice", objectId: null },
+        choices: [
+          { text: "Bounce it back to the keeper and move to a new angle — reset", correct: true },
+          { text: "Try to spin and dribble through the defender behind me", correct: false },
+          { text: "Hold the ball and protect it forever", correct: false },
+        ],
+        board: {
+          objects: [
+            { id: "ep2-gk", type: "player", x: 70, y: 310, team: "home", label: "1" },
+            { id: "ep2-p6", type: "player", x: 330, y: 310, team: "home", label: "6" },
+            { id: "ep2-p7", type: "player", x: 430, y: 480, team: "home", label: "7" },
+            { id: "ep2-p11", type: "player", x: 430, y: 150, team: "home", label: "11" },
+            { id: "ep2-p10", type: "player", x: 560, y: 310, team: "home", label: "10" },
+            { id: "ep2-a10", type: "player", x: 365, y: 310, team: "away", label: "10" },
+            { id: "ep2-a6", type: "player", x: 470, y: 250, team: "away", label: "6" },
+            { id: "ep2-a7", type: "player", x: 500, y: 430, team: "away", label: "7" },
+            { id: "ep2-ball", type: "ball", x: 345, y: 310 },
+          ],
+        },
+      },
+    },
+    {
+      kind: "scenario",
+      scenario: {
+        id: "ep-find-pocket",
+        format: "5v5-1-2-1",
+        type: "movement",
+        difficulty: "intermediate",
+        youAre: "home",
+        attackDir: "right",
+        question: "The keeper has the ball and two red players are pressing. Drag #6 into the open POCKET between them — where #6 can receive AND see forward.",
+        instruction: "Drag #6 into the gap between the two pressing defenders.",
+        optimalNote: "That's the pocket — close enough to receive, open enough to turn and play.",
+        explanation: "Against a press, the best place to receive is the POCKET — the space between defenders, not behind them. In the pocket you can receive with an open body, see the field, and pick around, through, or over. Hiding behind a defender means the pass can never reach you.",
+        nudges: [
+          "Not behind a defender — BETWEEN them.",
+          "Find the gap in the middle where the keeper has a clear lane to you.",
+        ],
+        answer: { mode: "move", objectIds: ["ep3-p6"] },
+        zones: { "ep3-p6": { x: 250, y: 240, w: 150, h: 140 } },
+        relations: {
+          "ep3-p6": [
+            { type: "minDist", relativeTo: "ep3-a10", min: 80 },
+            { type: "minDist", relativeTo: "ep3-a9", min: 80 },
+          ],
+        },
+        optimals: { "ep3-p6": { x: 320, y: 310 } },
+        choices: null,
+        board: {
+          objects: [
+            { id: "ep3-gk", type: "player", x: 70, y: 310, team: "home", label: "1" },
+            { id: "ep3-p6", type: "player", x: 470, y: 310, team: "home", label: "6" },
+            { id: "ep3-p7", type: "player", x: 430, y: 490, team: "home", label: "7" },
+            { id: "ep3-p11", type: "player", x: 430, y: 140, team: "home", label: "11" },
+            { id: "ep3-p10", type: "player", x: 620, y: 310, team: "home", label: "10" },
+            { id: "ep3-a9", type: "player", x: 200, y: 200, team: "away", label: "9" },
+            { id: "ep3-a10", type: "player", x: 200, y: 420, team: "away", label: "10" },
+            { id: "ep3-a6", type: "player", x: 560, y: 310, team: "away", label: "6" },
+            { id: "ep3-ball", type: "ball", x: 95, y: 310 },
+          ],
+        },
+      },
+    },
+    {
+      kind: "live-scenario",
+      title: "Beat the press — live",
+      body: "Goal kick, and the other team is pressing hard. You're the #6 — show in the pockets, open your body, touch away from pressure, and reset when you must. String 4 passes in a row as a team to break their press and complete the lesson.",
+      matchConfig: {
+        format: "5v5",
+        userRole: "hold",
+        duration: 180000,
+        aiDifficulty: "medium",
+        defensivePressure: "high",
+        zoneRules: [],
+      },
+      scenarioSetup: { forcedRestart: "goalkick", restartTeam: "us", restartDelaySec: 4 },
+      objective: { type: "passCount", label: "Complete 4 passes in a row under the press", target: 4, consecutive: true },
+    },
+  ],
+};
