@@ -56,6 +56,36 @@ export function getLesson(id: string): Lesson | undefined {
   return LESSONS[id];
 }
 
+// ── Course access gating ──────────────────────────────────────────────────
+// For now only the 5v5 Pilot is open to everyone; every other course is
+// master-only (admin). This is a UI/UX gate — the master role is the single
+// flag we check. (Lesson DATA isn't secret, so this isn't a security boundary;
+// it just controls what non-admins can browse/play.)
+export const FREE_COURSE_IDS = ["5v5-pilot"] as const;
+
+// True if a course is playable by a user with the given role.
+// master → everything; everyone else → only the free course(s).
+export function canAccessCourse(courseId: string, isMaster: boolean): boolean {
+  if (isMaster) return true;
+  return (FREE_COURSE_IDS as readonly string[]).includes(courseId);
+}
+
+// The course a given lesson id belongs to (first match), or undefined for
+// standalone/custom lessons (which are never gated here).
+export function courseForLesson(lessonId: string): Course | undefined {
+  return COURSES.find((c) => c.lessonIds.includes(lessonId));
+}
+
+// True if a user with the given role may open a specific lesson directly.
+// A lesson inside a gated course inherits that course's lock; standalone/custom
+// lessons (no owning course) are always allowed.
+export function canAccessLesson(lessonId: string, isMaster: boolean): boolean {
+  if (isMaster) return true;
+  const course = courseForLesson(lessonId);
+  if (!course) return true; // custom / standalone lesson
+  return canAccessCourse(course.id, isMaster);
+}
+
 // Stable id of the saved in-app edit of a built-in lesson. The author saves
 // edits of a built-in under this id (see app/author), so it's the single link
 // between a shipped lesson and the user's edited version of it.

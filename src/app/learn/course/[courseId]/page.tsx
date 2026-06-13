@@ -5,7 +5,7 @@
 import { use } from "react";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { COURSES, LESSONS, resolveLesson, editedIdFor } from "@/data/lessons";
+import { COURSES, LESSONS, resolveLesson, editedIdFor, canAccessCourse } from "@/data/lessons";
 import { useGameStore } from "@/stores/gameStore";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
@@ -19,7 +19,8 @@ export default function CoursePage({ params }: { params: Promise<{ courseId: str
   const { courseId } = use(params);
   const completed = useGameStore((s) => s.progress.completedLessons) ?? [];
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
-  const { can } = useAuth();
+  const { can, role } = useAuth();
+  const isMaster = role === "master";
   const course = COURSES.find((c) => c.id === courseId);
 
   if (!course) {
@@ -41,6 +42,20 @@ export default function CoursePage({ params }: { params: Promise<{ courseId: str
         <p className="font-[Fredoka] font-bold text-xl text-[#16241c] mb-1">{course.title}</p>
         <span className="text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded bg-[#e8f0e6] text-[#5d6f63] mb-3">Coming Soon</span>
         <p className="text-sm font-semibold text-[#5d6f63] max-w-xs mb-5">This course isn&apos;t available yet. Start with the 5v5 Pilot Course.</p>
+        <Link href="/learn" className="rounded-xl bg-[#2E6FE0] text-white font-bold px-5 py-2.5 text-sm">← Back to courses</Link>
+      </main>
+    );
+  }
+
+  // Access gate (direct-URL guard): only the 5v5 Pilot is open to non-admins
+  // right now. Non-master users hitting any other course URL get a locked screen.
+  if (!canAccessCourse(course.id, isMaster)) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+        <span className="text-4xl mb-3">🔒</span>
+        <p className="font-[Fredoka] font-bold text-xl text-[#16241c] mb-1">{course.title}</p>
+        <span className="text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-1 rounded bg-[#e8f0e6] text-[#5d6f63] mb-3">Locked</span>
+        <p className="text-sm font-semibold text-[#5d6f63] max-w-xs mb-5">This course isn&apos;t available on your account yet. Start with the 5v5 Pilot Course.</p>
         <Link href="/learn" className="rounded-xl bg-[#2E6FE0] text-white font-bold px-5 py-2.5 text-sm">← Back to courses</Link>
       </main>
     );

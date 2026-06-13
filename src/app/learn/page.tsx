@@ -4,7 +4,7 @@
 // Lessons" section with Edit/Delete. Course cards show completion progress.
 import Link from "next/link";
 import { clsx } from "clsx";
-import { COURSES, LESSONS, isEditOfBuiltin } from "@/data/lessons";
+import { COURSES, LESSONS, isEditOfBuiltin, canAccessCourse } from "@/data/lessons";
 import { useGameStore } from "@/stores/gameStore";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
@@ -18,7 +18,8 @@ export default function LearnPage() {
   const completed = useGameStore((s) => s.progress.completedLessons) ?? [];
   const customLessons = useGameStore((s) => s.customLessons) ?? [];
   const deleteCustomLesson = useGameStore((s) => s.deleteCustomLesson);
-  const { can } = useAuth();
+  const { can, role } = useAuth();
+  const isMaster = role === "master";
   // Edits of built-in lessons show inside their course (as the active version),
   // so don't also list them here — only show genuinely standalone custom lessons.
   const ownLessons = customLessons.filter((l) => !isEditOfBuiltin(l.id));
@@ -51,6 +52,24 @@ export default function LearnPage() {
                 <div key={course.id} className="block" aria-disabled>
                   <div className="relative h-full flex flex-col gap-2 rounded-2xl bg-white border-2 border-[rgba(20,60,35,.1)] shadow-sm p-4 opacity-55 cursor-not-allowed select-none">
                     <span className="absolute top-2.5 right-2.5 text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded bg-[#e8f0e6] text-[#5d6f63]">Coming Soon</span>
+                    <span className="text-3xl leading-none">{course.icon}</span>
+                    <h2 className="font-[Fredoka] font-semibold text-base text-[#16241c] leading-tight">{course.title}</h2>
+                    <span className={clsx("self-start text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded", LEVEL_BADGE[course.level])}>
+                      {course.level}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            // Access gate: only the 5v5 Pilot is open to non-admins right now.
+            // Every other course renders locked (greyed, not clickable) unless
+            // the viewer is the master/admin.
+            if (!canAccessCourse(course.id, isMaster)) {
+              return (
+                <div key={course.id} className="block" aria-disabled>
+                  <div className="relative h-full flex flex-col gap-2 rounded-2xl bg-white border-2 border-[rgba(20,60,35,.1)] shadow-sm p-4 opacity-55 cursor-not-allowed select-none">
+                    <span className="absolute top-2.5 right-2.5 text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded bg-[#e8f0e6] text-[#5d6f63]">🔒 Locked</span>
                     <span className="text-3xl leading-none">{course.icon}</span>
                     <h2 className="font-[Fredoka] font-semibold text-base text-[#16241c] leading-tight">{course.title}</h2>
                     <span className={clsx("self-start text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded", LEVEL_BADGE[course.level])}>
