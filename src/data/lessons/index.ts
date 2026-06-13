@@ -18,10 +18,22 @@ import { ITS_A_RONDO_LESSON } from "./its-a-rondo";
 import { LW_MODULE_LESSONS } from "./lw-module";
 import { RW_MODULE_LESSONS } from "./rw-module";
 import { AM_MODULE_LESSONS } from "./am-module";
+import { THREE_V_THREE_LESSONS } from "./3v3-fundamentals";
+import { CB6_MODULE_LESSONS } from "./cb-6-module";
+import { ST9_MODULE_LESSONS } from "./st-9-module";
+import { SEVEN_V_SEVEN_LESSONS } from "./7v7-intro";
 
-// Position modules register as id→lesson entries like everything else.
+// Position + small-sided modules register as id→lesson entries like everything else.
 const POSITION_MODULE_LESSONS = Object.fromEntries(
-  [...LW_MODULE_LESSONS, ...RW_MODULE_LESSONS, ...AM_MODULE_LESSONS].map((l) => [l.id, l]),
+  [
+    ...LW_MODULE_LESSONS,
+    ...RW_MODULE_LESSONS,
+    ...AM_MODULE_LESSONS,
+    ...THREE_V_THREE_LESSONS,
+    ...CB6_MODULE_LESSONS,
+    ...ST9_MODULE_LESSONS,
+    ...SEVEN_V_SEVEN_LESSONS,
+  ].map((l) => [l.id, l]),
 );
 
 export const LESSONS: Record<string, Lesson> = {
@@ -129,6 +141,74 @@ export const COURSES: Course[] = [
     description:
       "Be the creator! Five lessons on the #10: living between the lines, finding pockets, the final pass that sets runners free, turning to shoot, and being the engine that connects everything — including the first press.",
     lessonIds: ["am-meet", "am-find-pocket", "am-final-pass", "am-turn-and-shoot", "am-engine"],
+  },
+  {
+    id: "3v3-fundamentals",
+    title: "3v3 Fundamentals",
+    icon: "🔻",
+    level: "beginner",
+    description:
+      "Start small, think big! Seven 3v3 lessons for your youngest players: the magic triangle, making yourself big, pass-and-move, support angles, dribble-or-pass decisions, winning the ball back together, and finishing a 3v3 chance.",
+    lessonIds: [
+      "3v3-magic-triangle",
+      "3v3-make-yourself-big",
+      "3v3-pass-and-move",
+      "3v3-support-angles",
+      "3v3-dribble-or-pass",
+      "3v3-win-it-back",
+      "3v3-score-the-goal",
+    ],
+  },
+  {
+    id: "cb-6-module",
+    title: "The Anchor — #6",
+    icon: "🛡️",
+    level: "intermediate",
+    description:
+      "Be the calm in the storm! Seven lessons on the #6 — the deepest builder and protector: dropping to receive, scanning before the ball arrives, the first pass out, screening the middle, winning it back, and being the pivot that connects everything.",
+    lessonIds: [
+      "cb6-meet-the-6",
+      "cb6-drop-and-receive",
+      "cb6-scan-before",
+      "cb6-first-pass-out",
+      "cb6-screen-the-middle",
+      "cb6-win-it-restart",
+      "cb6-be-the-pivot",
+    ],
+  },
+  {
+    id: "st-9-module",
+    title: "The Striker — #9",
+    icon: "🎯",
+    level: "intermediate",
+    description:
+      "Score the goals! Seven lessons on the #9: living on the last shoulder, timing runs in behind, checking to the ball, first-time finishing, attacking the near and far post, and pressing from the front to start the defense.",
+    lessonIds: [
+      "st9-meet-the-9",
+      "st9-last-shoulder",
+      "st9-run-behind",
+      "st9-check-to-ball",
+      "st9-first-time-finishing",
+      "st9-near-far-post",
+      "st9-press-from-front",
+    ],
+  },
+  {
+    id: "7v7-intro",
+    title: "7v7 Intro",
+    icon: "🟦",
+    level: "intermediate",
+    description:
+      "Step up to 7v7! Seven lessons on the bigger game: the 2-3-1 shape, the back two, the midfield three, width from the fullbacks, wide overloads, pressing as a unit, and transition — what all seven do the instant the ball changes hands.",
+    lessonIds: [
+      "7v7-welcome",
+      "7v7-back-two",
+      "7v7-midfield-three",
+      "7v7-width-fullbacks",
+      "7v7-overloads-wide",
+      "7v7-pressing-unit",
+      "7v7-transition",
+    ],
   },
   {
     id: "5v5-beginner",
