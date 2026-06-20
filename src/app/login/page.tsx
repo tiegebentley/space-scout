@@ -3,6 +3,83 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 
+function StoreBadge({
+  store,
+  href,
+  label,
+  name,
+}: {
+  store: "play" | "apple";
+  href: string;
+  label: string;
+  name: string;
+}) {
+  const live = Boolean(href);
+  const icon =
+    store === "play" ? (
+      // Google Play triangle
+      <svg viewBox="0 0 512 512" className="w-6 h-6 shrink-0" aria-hidden>
+        <path fill="#00D9FF" d="M48 59v394l218-197z" />
+        <path fill="#00F076" d="M48 59l218 197 70-63z" />
+        <path fill="#FFC900" d="M336 193l-70 63 70 63 80-46c20-12 20-22 0-34z" />
+        <path fill="#FF3A44" d="M48 453l218-197 70 63z" />
+      </svg>
+    ) : (
+      // Apple logo
+      <svg viewBox="0 0 384 512" className="w-6 h-6 shrink-0" aria-hidden>
+        <path
+          fill="currentColor"
+          d="M318 268c-1-58 47-86 49-87-27-39-68-44-83-45-35-4-69 21-87 21s-45-20-74-20c-38 1-73 22-93 56-39 69-10 171 28 227 19 27 41 58 70 57 28-1 39-18 73-18s44 18 74 17c30-1 49-28 67-55 21-31 30-61 30-63-1-1-58-22-59-87z"
+        />
+        <path
+          fill="currentColor"
+          d="M260 116c15-19 26-45 23-71-22 1-49 15-65 33-14 16-27 43-24 68 25 2 50-12 66-30z"
+        />
+      </svg>
+    );
+
+  const inner = (
+    <>
+      {icon}
+      <span className="flex flex-col leading-tight text-left">
+        <span className="text-[10px] font-semibold opacity-80">{label}</span>
+        <span className="text-sm font-bold -mt-0.5">{name}</span>
+      </span>
+      {!live && (
+        <span className="ml-auto text-[9px] font-bold uppercase tracking-wide rounded-full bg-white/15 px-2 py-0.5">
+          Soon
+        </span>
+      )}
+    </>
+  );
+
+  const cls =
+    "flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-white bg-[#16241c] w-full";
+
+  if (!live) {
+    return (
+      <div
+        className={`${cls} opacity-50 cursor-default select-none`}
+        aria-disabled="true"
+        title={`${name} — coming soon`}
+      >
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`${cls} hover:bg-[#1f3328] transition-colors`}
+    >
+      {inner}
+    </a>
+  );
+}
+
 function LoginInner() {
   const supabase = getSupabaseBrowser();
   const router = useRouter();
@@ -12,6 +89,13 @@ function LoginInner() {
   // The public marketing/landing site (outside this auth-gated app). Configurable
   // via env so the domain can change without a code edit; defaults to the live site.
   const landingUrl = process.env.NEXT_PUBLIC_LANDING_URL || "https://thesocceriqlab.com/";
+
+  // Native app store links. Empty until the listings are published; when empty the
+  // badge renders as a non-clickable "Coming soon" state. Flip on by setting the env
+  // vars at deploy time — no code change needed.
+  const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || "";
+  const appStoreUrl = process.env.NEXT_PUBLIC_APP_STORE_URL || "";
+  const storesLive = Boolean(playStoreUrl || appStoreUrl);
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -91,6 +175,26 @@ function LoginInner() {
           className="w-full mt-3 text-xs font-bold text-[#2E6FE0] hover:underline cursor-pointer">
           {mode === "login" ? "No account? Sign up (as a player)" : "Have an account? Sign in"}
         </button>
+
+        <div className="mt-4 pt-4 border-t border-[rgba(20,60,35,.1)]">
+          <p className="text-center text-[11px] font-bold uppercase tracking-wide text-[#9aa79f] mb-2.5">
+            {storesLive ? "Get the mobile app" : "Mobile app coming soon"}
+          </p>
+          <div className="flex flex-col gap-2">
+            <StoreBadge
+              store="play"
+              href={playStoreUrl}
+              label="Get it on"
+              name="Google Play"
+            />
+            <StoreBadge
+              store="apple"
+              href={appStoreUrl}
+              label="Download on the"
+              name="App Store"
+            />
+          </div>
+        </div>
 
         <div className="mt-4 pt-4 border-t border-[rgba(20,60,35,.1)] text-center">
           <a href={landingUrl}
