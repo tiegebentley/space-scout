@@ -163,7 +163,7 @@ export function MatchView() {
             Home
           </Link>
           <div>
-            <h1 className="font-[Fredoka] font-semibold text-lg leading-tight">Space Scout</h1>
+            <h1 className="font-[Fredoka] font-semibold text-lg leading-tight">Soccer IQ Lab</h1>
             <p className="text-[10.5px] opacity-85 font-bold -mt-0.5 tracking-wide">
               {matchConfig.format.toUpperCase()} MATCH
             </p>

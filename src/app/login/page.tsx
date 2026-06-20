@@ -139,8 +139,8 @@ function LoginInner() {
     <main className="flex-1 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-lg border border-[rgba(20,60,35,.08)] p-6">
         <div className="text-center mb-5">
-          <div className="text-3xl">🚀</div>
-          <h1 className="font-[Fredoka] font-bold text-2xl text-[#16241c]">Space Scout</h1>
+          <div className="text-3xl">&#9917;</div>
+          <h1 className="font-[Fredoka] font-bold text-2xl text-[#16241c]">Soccer IQ Lab</h1>
           <p className="text-sm font-semibold text-[#5d6f63]">{mode === "login" ? "Sign in to continue" : "Create your account"}</p>
         </div>
 

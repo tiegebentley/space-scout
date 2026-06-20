@@ -27,7 +27,7 @@ export default function HomePage() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-b from-[#43c46e] to-[#1F6E3D] text-4xl shadow-lg mb-4">
             &#9917;
           </div>
-          <h1 className="font-[Fredoka] font-bold text-3xl text-[#16241c]">Space Scout</h1>
+          <h1 className="font-[Fredoka] font-bold text-3xl text-[#16241c]">Soccer IQ Lab</h1>
           <p className="text-sm font-bold text-[#5d6f63] mt-1">Train your soccer brain</p>
         </div>
 
@@ -127,7 +127,7 @@ export default function HomePage() {
         </div>
 
         <p className="text-center text-[10px] font-bold text-[#5d6f63]/60 mt-6">
-          Space Scout v0.1 &middot; Built for youth players
+          Soccer IQ Lab v0.1 &middot; Built for youth players
         </p>
       </div>
     </main>

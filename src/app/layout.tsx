@@ -3,12 +3,12 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 
 export const metadata: Metadata = {
-  title: "Space Scout — Youth Soccer Tactics Trainer",
+  title: "Soccer IQ Lab — Youth Soccer Tactics Trainer",
   description: "Learn soccer tactics through interactive matches and drills. Built for youth players who want to read the game better.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Space Scout",
+    title: "Soccer IQ Lab",
   },
 };
 
