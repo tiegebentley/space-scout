@@ -95,7 +95,9 @@ function LoginInner() {
   // vars at deploy time — no code change needed.
   const playStoreUrl = process.env.NEXT_PUBLIC_PLAY_STORE_URL || "";
   const appStoreUrl = process.env.NEXT_PUBLIC_APP_STORE_URL || "";
-  const storesLive = Boolean(playStoreUrl || appStoreUrl);
+
+  // Direct Android download (sideload). Served from /public; overridable via env.
+  const androidApkUrl = process.env.NEXT_PUBLIC_ANDROID_APK_URL || "/soccer-iq-lab.apk";
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -178,9 +180,26 @@ function LoginInner() {
 
         <div className="mt-4 pt-4 border-t border-[rgba(20,60,35,.1)]">
           <p className="text-center text-[11px] font-bold uppercase tracking-wide text-[#9aa79f] mb-2.5">
-            {storesLive ? "Get the mobile app" : "Mobile app coming soon"}
+            Get the mobile app
           </p>
-          <div className="flex flex-col gap-2">
+
+          {/* Primary, unambiguous Android download */}
+          <a
+            href={androidApkUrl}
+            download
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#2B8A4E] text-white font-[Fredoka] font-bold text-base py-3 w-full hover:bg-[#247642] transition-colors"
+          >
+            <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden fill="currentColor">
+              <path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 2h14v2H5v-2z" />
+            </svg>
+            Download for Android
+          </a>
+          <p className="text-center text-[10px] text-[#9aa79f] mt-1.5">
+            Installs directly. Tap “Install anyway” if your phone asks.
+          </p>
+
+          {/* Store badges (live once published) */}
+          <div className="flex flex-col gap-2 mt-3">
             <StoreBadge
               store="play"
               href={playStoreUrl}
