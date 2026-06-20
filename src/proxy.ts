@@ -5,8 +5,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// Routes that don't require a session.
-const PUBLIC_PREFIXES = ["/login", "/auth"];
+// Routes that don't require a session. /privacy and /terms must stay public so
+// app-store crawlers (and users not signed in) can reach the legal pages.
+const PUBLIC_PREFIXES = ["/login", "/auth", "/privacy", "/terms"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
