@@ -223,16 +223,23 @@ export function MatchView() {
             </div>
           )}
 
-          {/* Start overlay */}
+          {/* Start overlay — the container scrolls (not the card) so long
+              instructions read top-to-bottom on small screens instead of being
+              clamped. A hint tells the player to scroll for the rest. */}
           {!started && !matchOver && (
-            <div className="absolute inset-2 lg:inset-3 rounded-xl flex items-center justify-center bg-[rgba(11,40,22,.62)] backdrop-blur-sm text-center text-white p-5 z-20">
-              <div className="bg-white/[.08] border border-white/[.2] rounded-2xl p-6 lg:p-7 max-w-[400px] w-full max-h-full overflow-y-auto">
+            <div className="absolute inset-2 lg:inset-3 rounded-xl flex items-start lg:items-center justify-center bg-[rgba(11,40,22,.62)] backdrop-blur-sm text-center text-white p-4 lg:p-5 z-20 overflow-y-auto overscroll-contain">
+              <div className="bg-white/[.08] border border-white/[.2] rounded-2xl p-6 lg:p-7 max-w-[400px] w-full my-auto">
                 <h2 className="font-[Fredoka] font-semibold text-[24px] mb-3">
                   {matchConfig.format.toUpperCase()} Match
                 </h2>
                 <p className="text-[13.5px] leading-relaxed opacity-95 font-semibold">
                   You always control the <b>blue player with the gold ring</b>. Attack the <b>top</b> goal.
                   When your team has the ball, find space to receive. When you <b>lose</b> it, chase and defend!
+                </p>
+                {/* Mobile-only cue: the card can run past the screen — let players
+                    know to scroll for the rest before kicking off. */}
+                <p className="lg:hidden mt-3 text-[11px] font-extrabold tracking-wide text-[#FFD166] animate-pulse">
+                  ↓ Scroll down to read the rest
                 </p>
                 <div className="flex flex-col gap-2.5 text-left mt-5 text-[12.5px] font-bold">
                   <div className="flex items-center gap-2.5">
@@ -386,10 +393,6 @@ export function MatchView() {
           </div>
         </div>
 
-        {/* Mobile coach strip */}
-        <div className="flex lg:hidden items-center gap-2.5 p-2 px-3 border-t border-[rgba(20,60,35,.1)] bg-white">
-          <CoachPanel message={coachMsg} />
-        </div>
       </div>
     </div>
   );
