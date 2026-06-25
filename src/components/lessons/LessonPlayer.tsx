@@ -27,6 +27,11 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   const [showSummary, setShowSummary] = useState(false);
   const [runId, setRunId] = useState(0); // bump to remount the board on retry
 
+  // Post-lesson feedback (rating + optional comment, emailed to the coach)
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [fbState, setFbState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
   const step = lesson.steps[stepIdx];
   const total = lesson.steps.length;
   const scenarioCount = useMemo(() => lesson.steps.filter((s) => s.kind === "scenario").length, [lesson]);
@@ -89,9 +94,35 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
     setStepIdx(0);
     setShowSummary(false);
     setRunId((n) => n + 1);
+    setRating(0);
+    setComment("");
+    setFbState("idle");
   }, []);
 
   const progressPct = useMemo(() => Math.round(((stepIdx + 1) / total) * 100), [stepIdx, total]);
+
+  const submitFeedback = useCallback(async () => {
+    if (rating < 1 || fbState === "sending") return;
+    setFbState("sending");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          score,
+          total: scenarioCount,
+          pct,
+          rating,
+          comment: comment.trim(),
+        }),
+      });
+      setFbState(res.ok ? "sent" : "error");
+    } catch {
+      setFbState("error");
+    }
+  }, [rating, fbState, lesson.id, lesson.title, score, scenarioCount, pct, comment]);
 
   // ----- Finish summary -----
   if (showSummary) {
@@ -107,6 +138,52 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
           <p className="text-sm font-bold text-[#5d6f63] mb-6">
             You got {score} of {scenarioCount} scenarios right.
           </p>
+
+          {/* Rating + feedback (emailed to the coach) */}
+          {fbState === "sent" ? (
+            <div className="mb-6 rounded-xl bg-[#eaf6ee] border border-[#bfe3cb] p-4 text-sm font-bold text-[#2B8A4E]">
+              Thanks for the feedback! 🙌
+            </div>
+          ) : (
+            <div className="mb-6 text-left">
+              <p className="text-sm font-extrabold text-[#16241c] mb-2 text-center">How was this lesson?</p>
+              <div className="flex items-center justify-center gap-1.5 mb-3">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setRating(n)}
+                    aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                    className={clsx(
+                      "text-3xl leading-none transition-transform active:scale-90 cursor-pointer",
+                      n <= rating ? "text-[#E0A500]" : "text-[#d6ded8] hover:text-[#f0cf66]"
+                    )}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Anything you'd tell your coach? (optional)"
+                rows={3}
+                maxLength={1000}
+                className="w-full rounded-xl border border-[rgba(20,60,35,.15)] p-3 text-sm font-semibold text-[#33433a] placeholder:text-[#9aa79f] focus:outline-none focus:border-[#2E6FE0] resize-none"
+              />
+              {fbState === "error" && (
+                <p className="text-xs font-bold text-[#E0463B] mt-1.5">Couldn’t send — please try again.</p>
+              )}
+              <TapButton
+                onTap={submitFeedback}
+                disabled={rating < 1 || fbState === "sending"}
+                className="w-full mt-2 rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer transition-colors hover:bg-[#247a43] disabled:opacity-40 disabled:cursor-default"
+              >
+                {fbState === "sending" ? "Sending…" : "Send feedback"}
+              </TapButton>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2">
             <Link href="/learn" className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-3">Back to lessons</Link>
             <TapButton onTap={retry} className="rounded-xl bg-white border border-[rgba(20,60,35,.15)] text-[#33433a] font-bold text-sm py-3 cursor-pointer">

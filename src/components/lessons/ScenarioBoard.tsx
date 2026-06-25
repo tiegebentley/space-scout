@@ -249,7 +249,7 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
         {/* draggable tip handle (arrow mode) */}
         {mode === "arrow" && o.id === arrowId && !reveal && (
           <circle cx={b.sx} cy={b.sy} r={14} fill="rgba(255,209,102,.5)" stroke="#FFD166" strokeWidth={3}
-            style={{ cursor: "grab" }} onPointerDown={onPointerDownObj(o.id, "tip")} />
+            style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onPointerDownObj(o.id, "tip")} />
         )}
       </g>
     );
@@ -273,7 +273,9 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-          className="w-full max-w-[440px] max-h-[68vh] mx-auto block rounded-2xl border-2 border-[rgba(20,60,35,.15)] touch-none select-none shadow-sm"
+          // touch-pan-y lets a vertical swipe on the field scroll the page,
+          // while object drags still work (their pointerdown calls preventDefault).
+          className="w-full max-w-[440px] max-h-[68vh] mx-auto block rounded-2xl border-2 border-[rgba(20,60,35,.15)] touch-pan-y select-none shadow-sm"
         >
         {/* Striped grass (horizontal bands up the pitch) */}
         {Array.from({ length: 10 }).map((_, i) => (
@@ -347,7 +349,9 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
               key={o.id}
               onPointerDown={isDraggable ? onPointerDownObj(o.id) : undefined}
               onClick={isInfo ? onTapInfo(o.id) : undefined}
-              style={{ cursor: interactive ? (isInfo ? "pointer" : "grab") : "default" }}
+              // Draggable players opt out of touch panning so a vertical drag moves
+              // the player; info-tap and static players let the swipe scroll the page.
+              style={{ cursor: interactive ? (isInfo ? "pointer" : "grab") : "default", touchAction: isDraggable ? "none" : undefined }}
             >
               <circle cx={s.sx} cy={s.sy} r={R} fill={isHome ? HOME : AWAY} stroke={ring} strokeWidth={interactive || graded ? 5 : 2} />
               <text x={s.sx} y={s.sy + 6} textAnchor="middle" fontSize={20} fontWeight={800} fill="#fff" style={{ fontFamily: "Fredoka, sans-serif", pointerEvents: "none" }}>
