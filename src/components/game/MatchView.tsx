@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { GameCanvas } from "./GameCanvas";
 import { Joystick } from "./Joystick";
 import { ActionButtons } from "./ActionButtons";
@@ -18,8 +19,12 @@ import { ALL_TACTICS } from "@/engine/tactics/presets";
 import { clsx } from "clsx";
 
 export function MatchView() {
+  const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const matchConfig = useGameStore((s) => s.matchConfig);
+  // Set when this match was launched from a lesson's final "play" step — lets the
+  // "Full time" overlay route back to the lesson's feedback/rating summary.
+  const lessonReturn = matchConfig.lessonReturn;
   const addXp = useGameStore((s) => s.addXp);
   const recordMatch = useGameStore((s) => s.recordMatch);
 
@@ -303,9 +308,26 @@ export function MatchView() {
                 <p className="mt-2 text-sm">
                   Great match! Every time you find space and defend well, you read the game better.
                 </p>
-                <TapButton onTap={handleStart} className="btn-primary mt-3.5">
-                  Play again
-                </TapButton>
+                {lessonReturn ? (
+                  <div className="flex flex-col gap-2 mt-3.5">
+                    <TapButton
+                      onTap={() => router.push(`/learn/${lessonReturn.id}?feedback=1`)}
+                      className="btn-primary"
+                    >
+                      Finish & rate lesson →
+                    </TapButton>
+                    <TapButton
+                      onTap={handleStart}
+                      className="rounded-xl bg-white/15 text-white font-bold text-sm py-2.5 cursor-pointer hover:bg-white/25"
+                    >
+                      Play again
+                    </TapButton>
+                  </div>
+                ) : (
+                  <TapButton onTap={handleStart} className="btn-primary mt-3.5">
+                    Play again
+                  </TapButton>
+                )}
               </div>
             </div>
           )}

@@ -1,5 +1,5 @@
 "use client";
-import { use } from "react";
+import { use, Suspense } from "react";
 import Link from "next/link";
 import { LessonPlayer } from "@/components/lessons/LessonPlayer";
 import { resolveLesson, canAccessLesson } from "@/data/lessons";
@@ -42,5 +42,9 @@ export default function LessonPage({ params }: { params: Promise<{ lessonId: str
     );
   }
 
-  return <LessonPlayer lesson={lesson} />;
+  return (
+    <Suspense fallback={null}>
+      <LessonPlayer lesson={lesson} />
+    </Suspense>
+  );
 }

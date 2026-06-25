@@ -53,11 +53,10 @@ export function GameCanvas({ engineRef, canvasRef, onWingerBoundsChange, classNa
         }
       }
 
-      if (engine.canDrag(p.x, p.y)) {
-        draggingRef.current = true;
-        canvas.classList.add("grabbing");
-        e.preventDefault();
-      }
+      // Player drag-to-move is intentionally disabled: the player is controlled
+      // only via arrow keys and the on-screen joystick. (Zone-editor handles
+      // above still drag.) Leaving draggingRef false means onMove ignores
+      // pointer movement for the player.
     };
 
     const onMove = (e: MouseEvent | TouchEvent) => {

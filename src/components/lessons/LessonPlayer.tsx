@@ -5,7 +5,7 @@
 // for a score, shows a finish summary with a % + Retry, and records completion
 // (+ best score) in the store.
 import { useMemo, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { TapButton } from "@/components/ui/TapButton";
 import { clsx } from "clsx";
@@ -16,15 +16,21 @@ import type { Lesson } from "@/types/lessons";
 
 export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const setMatchConfig = useGameStore((s) => s.setMatchConfig);
   const recordLesson = useGameStore((s) => s.recordLesson);
+  // When the game routes back here (?feedback=1), open straight into the
+  // feedback summary. The score is read from the matchConfig.lessonReturn that
+  // the play step stashed (this fresh mount has no in-memory results).
+  const returningForFeedback = searchParams.get("feedback") === "1";
+  const lessonReturn = useGameStore.getState().matchConfig?.lessonReturn;
 
   const [stepIdx, setStepIdx] = useState(0);
   const [resolved, setResolved] = useState(false); // current scenario can advance
   const [objectiveMet, setObjectiveMet] = useState(false); // live-scenario complete
   // correctness keyed by scenario id (so retrying a step doesn't double count)
   const [results, setResults] = useState<Record<string, boolean>>({});
-  const [showSummary, setShowSummary] = useState(false);
+  const [showSummary, setShowSummary] = useState(returningForFeedback);
   const [runId, setRunId] = useState(0); // bump to remount the board on retry
 
   // Post-lesson feedback (rating + optional comment, emailed to the coach)
@@ -68,8 +74,16 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
     setStepIdx((i) => i - 1);
   }, [stepIdx, router]);
 
-  const score = useMemo(() => Object.values(results).filter(Boolean).length, [results]);
-  const pct = scenarioCount > 0 ? Math.round((score / scenarioCount) * 100) : 100;
+  // When returning from the game for feedback, the in-memory results are gone —
+  // use the score the play step stashed in lessonReturn.
+  const liveScore = useMemo(() => Object.values(results).filter(Boolean).length, [results]);
+  const score = returningForFeedback && lessonReturn ? lessonReturn.score : liveScore;
+  const pct =
+    returningForFeedback && lessonReturn
+      ? lessonReturn.pct
+      : scenarioCount > 0
+        ? Math.round((liveScore / scenarioCount) * 100)
+        : 100;
 
   // Finishing a lesson WITHOUT a final play step used to dead-end: "Next" on
   // the last step was a no-op and completion was never recorded. Now the last
@@ -83,8 +97,14 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   const launchGame = useCallback(() => {
     if (step.kind !== "play") return;
     // Launch straight into the configured game (skip the /play setup screen).
+    // Carry lesson context so the game's "Full time" screen can route back here
+    // to the feedback summary — every completed lesson should be ratable.
     recordLesson(lesson.id, pct);
-    setMatchConfig({ ...step.matchConfig, fromLesson: true });
+    setMatchConfig({
+      ...step.matchConfig,
+      fromLesson: true,
+      lessonReturn: { id: lesson.id, title: lesson.title, score, total: scenarioCount, pct },
+    });
     router.push("/play");
   }, [step, lesson.id, pct, recordLesson, setMatchConfig, router]);
 

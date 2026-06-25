@@ -156,6 +156,16 @@ export interface MatchConfig {
   // When a lesson's final "play" step launches the match, this skips the /play
   // setup screen and drops straight into the configured game.
   fromLesson?: boolean;
+  // Carried so the game's "Full time" overlay can route back to the lesson's
+  // feedback/rating summary (every completed lesson should be able to rate,
+  // including ones that end in the live game).
+  lessonReturn?: {
+    id: string;
+    title: string;
+    score: number;
+    total: number;
+    pct: number;
+  };
 }
 
 // Goalkick defensive setups — where the opposition positions on our goalkick
