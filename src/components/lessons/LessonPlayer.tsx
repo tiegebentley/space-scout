@@ -160,49 +160,14 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
           </p>
 
           {/* Rating + feedback (emailed to the coach) */}
-          {fbState === "sent" ? (
-            <div className="mb-6 rounded-xl bg-[#eaf6ee] border border-[#bfe3cb] p-4 text-sm font-bold text-[#2B8A4E]">
-              Thanks for the feedback! 🙌
-            </div>
-          ) : (
-            <div className="mb-6 text-left">
-              <p className="text-sm font-extrabold text-[#16241c] mb-2 text-center">How was this lesson?</p>
-              <div className="flex items-center justify-center gap-1.5 mb-3">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setRating(n)}
-                    aria-label={`${n} star${n > 1 ? "s" : ""}`}
-                    className={clsx(
-                      "text-3xl leading-none transition-transform active:scale-90 cursor-pointer",
-                      n <= rating ? "text-[#E0A500]" : "text-[#d6ded8] hover:text-[#f0cf66]"
-                    )}
-                  >
-                    ★
-                  </button>
-                ))}
-              </div>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Anything you'd tell your coach? (optional)"
-                rows={3}
-                maxLength={1000}
-                className="w-full rounded-xl border border-[rgba(20,60,35,.15)] p-3 text-sm font-semibold text-[#33433a] placeholder:text-[#9aa79f] focus:outline-none focus:border-[#2E6FE0] resize-none"
-              />
-              {fbState === "error" && (
-                <p className="text-xs font-bold text-[#E0463B] mt-1.5">Couldn’t send — please try again.</p>
-              )}
-              <TapButton
-                onTap={submitFeedback}
-                disabled={rating < 1 || fbState === "sending"}
-                className="w-full mt-2 rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer transition-colors hover:bg-[#247a43] disabled:opacity-40 disabled:cursor-default"
-              >
-                {fbState === "sending" ? "Sending…" : "Send feedback"}
-              </TapButton>
-            </div>
-          )}
+          <FeedbackBlock
+            rating={rating}
+            setRating={setRating}
+            comment={comment}
+            setComment={setComment}
+            fbState={fbState}
+            onSubmit={submitFeedback}
+          />
 
           <div className="flex flex-col gap-2">
             <Link href="/learn" className="rounded-xl bg-[#2E6FE0] text-white font-extrabold text-sm py-3">Back to lessons</Link>
@@ -276,6 +241,17 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
                 See my score
               </TapButton>
             )}
+            {/* Rate the lesson right here — no need to play the game first. */}
+            <div className="mt-4 rounded-xl bg-white p-4">
+              <FeedbackBlock
+                rating={rating}
+                setRating={setRating}
+                comment={comment}
+                setComment={setComment}
+                fbState={fbState}
+                onSubmit={submitFeedback}
+              />
+            </div>
           </div>
         )}
 
@@ -301,5 +277,71 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
         )}
       </div>
     </main>
+  );
+}
+
+// Star rating + optional comment, emailed to the coach. Shared by the finish
+// summary and the final "play" step (so a lesson is ratable before/without
+// playing the game). Once sent, it collapses to a thank-you.
+function FeedbackBlock({
+  rating,
+  setRating,
+  comment,
+  setComment,
+  fbState,
+  onSubmit,
+}: {
+  rating: number;
+  setRating: (n: number) => void;
+  comment: string;
+  setComment: (s: string) => void;
+  fbState: "idle" | "sending" | "sent" | "error";
+  onSubmit: () => void;
+}) {
+  if (fbState === "sent") {
+    return (
+      <div className="rounded-xl bg-[#eaf6ee] border border-[#bfe3cb] p-4 text-sm font-bold text-[#2B8A4E] text-center">
+        Thanks for the feedback! 🙌
+      </div>
+    );
+  }
+  return (
+    <div className="text-left">
+      <p className="text-sm font-extrabold text-[#16241c] mb-2 text-center">How was this lesson?</p>
+      <div className="flex items-center justify-center gap-1.5 mb-3">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => setRating(n)}
+            aria-label={`${n} star${n > 1 ? "s" : ""}`}
+            className={clsx(
+              "text-3xl leading-none transition-transform active:scale-90 cursor-pointer",
+              n <= rating ? "text-[#E0A500]" : "text-[#d6ded8] hover:text-[#f0cf66]"
+            )}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Anything you'd tell your coach? (optional)"
+        rows={3}
+        maxLength={1000}
+        className="w-full rounded-xl border border-[rgba(20,60,35,.15)] p-3 text-sm font-semibold text-[#33433a] placeholder:text-[#9aa79f] focus:outline-none focus:border-[#2E6FE0] resize-none"
+      />
+      {fbState === "error" && (
+        <p className="text-xs font-bold text-[#E0463B] mt-1.5">Couldn’t send — please try again.</p>
+      )}
+      <TapButton
+        onTap={onSubmit}
+        disabled={rating < 1 || fbState === "sending"}
+        className="w-full mt-2 rounded-xl bg-[#2B8A4E] text-white font-extrabold text-sm py-2.5 cursor-pointer transition-colors hover:bg-[#247a43] disabled:opacity-40 disabled:cursor-default"
+      >
+        {fbState === "sending" ? "Sending…" : "Send feedback"}
+      </TapButton>
+    </div>
   );
 }
