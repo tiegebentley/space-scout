@@ -7,7 +7,14 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Routes that don't require a session. /privacy and /terms must stay public so
 // app-store crawlers (and users not signed in) can reach the legal pages.
+// The Android APK must also stay public — it's downloaded straight from the
+// login screen by people who don't have an account yet.
 const PUBLIC_PREFIXES = ["/login", "/auth", "/privacy", "/terms"];
+
+// Public downloadable files that must never be auth-gated (otherwise the
+// request gets redirected to /login and the user downloads the HTML login
+// page renamed as the file instead of the real binary).
+const PUBLIC_FILES = ["/soccer-iq-lab.apk"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -35,7 +42,9 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
+  const isPublic =
+    PUBLIC_FILES.includes(path) ||
+    PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
@@ -56,6 +65,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except Next internals + static assets.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  // Run on everything except Next internals + static assets. Downloadable
+  // binaries (.apk/.aab) are excluded so they're served directly without the
+  // auth check, which would otherwise redirect them to /login.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|apk|aab)$).*)",
+  ],
 };
