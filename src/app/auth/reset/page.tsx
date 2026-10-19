@@ -46,10 +46,6 @@ function ResetInner() {
           };
         };
 
-        // Already have a session (e.g. ssr client auto-exchanged)? Done.
-        const existing = await sb.auth.getSession();
-        if (existing.data.session) { if (!cancelled) setReady(true); return; }
-
         const url = new URL(landingHref || window.location.href);
         const code = url.searchParams.get("code");
         const tokenHash = url.searchParams.get("token_hash");
@@ -69,7 +65,12 @@ function ResetInner() {
         } else if (accessToken && refreshToken) {
           ({ error: err } = await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }));
         } else {
-          err = new Error("missing token");
+          // No token in the link: only OK if a recovery session was already
+          // established (e.g. the client auto-exchanged it). The link's own
+          // token always wins over whoever happens to be signed in, so a reset
+          // link can never change a different account's password.
+          const existing = await sb.auth.getSession();
+          if (!existing.data.session) err = new Error("missing token");
         }
 
         if (cancelled) return;
