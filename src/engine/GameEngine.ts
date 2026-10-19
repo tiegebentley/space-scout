@@ -1924,6 +1924,29 @@ export class GameEngine {
 
     const lineY = gk.side === "us" ? BOT - 16 : TOP + 16;
     gk.y += (lineY - gk.y) * 0.1;
+
+    // A shot is coming at THIS goal: after a short reaction, the keeper dives
+    // toward where it will cross the line. Close-range shots give them almost no
+    // time; long-range shots give them time to get across.
+    const shotAtMe = this.ball.flying && this.ball.kind === "shot" &&
+      (gk.side === "them" ? this.ball.ty < H / 2 : this.ball.ty > H / 2);
+    if (shotAtMe) {
+      if ((this.ball.gkReact ?? 0) > 0) {
+        this.ball.gkReact = (this.ball.gkReact ?? 0) - 1;
+      } else {
+        const skill = this.skillFor(gk.side).keeper;
+        const diveSp = 3.1 * (1 + skill * 2) * this.PACE;
+        const crossX = clamp(this.ball.tx, GX0 - 20, GX1 + 20);
+        const dx = crossX - gk.x;
+        gk.x += Math.sign(dx) * Math.min(Math.abs(dx), diveSp);
+        gk.face = Math.atan2(0, dx || 1);
+      }
+      // Settle it when the ball reaches the keeper's line (not before — a shot
+      // still beside the shooter isn't at the keeper yet).
+      const nearGoal = Math.hypot(this.ball.tx - this.ball.x, this.ball.ty - this.ball.y) < 14 * this.PACE + 4;
+      if (nearGoal && !this.ball.gkBeaten) this.keeperSave(gk);
+      return;
+    }
     // Track the ball's x, but NOT instantly — a smart placement into the corner
     // should be able to beat the keeper. The lerp lags the ball so a well-placed
     // shot leaves a real gap; a tame shot down the middle still gets covered.
@@ -1951,69 +1974,39 @@ export class GameEngine {
   // A good shot to the open corner goes in most of the time; a poor-angle or
   // long-range effort is saved ~4 out of 5. The save is never a flat certainty.
   private keeperSave(gk: Player) {
-    // Off-target shots aren't the keeper's problem — let them fly out (checkBounds
-    // turns it into a goal kick / corner). Only on-target shots are saved/scored.
-    const onTarget = this.ball.x > GX0 - 6 && this.ball.x < GX1 + 6;
-    if (!onTarget) return;
-    // Shots now decide their outcome when struck (see takeShot). A "goal" beats
-    // the keeper and runs into the net; a "miss" never needs saving.
-    if (this.ball.shotOutcome === "goal" || this.ball.shotOutcome === "miss") return;
-    if (this.ball.shotOutcome === "saved") {
-      this.ball.flying = false;
-      this.ball.shotOutcome = null;
-      this.emitCoach(
-        gk.side === "us"
-          ? "Your keeper saves it! Quick — get open for the throw out."
-          : "Saved by the Reds keeper."
-      );
-      this.setRestart({
-        type: "goalkick", team: gk.side,
-        x: W / 2, y: gk.side === "us" ? BOT - 40 : TOP + 40,
-      });
+    // Off target → not the keeper's problem; it runs out for a goal kick.
+    // Judge where the ball CROSSES THE GOAL LINE (its target), not where it is now.
+    const crossX = this.ball.tx;
+    const onTarget = crossX > GX0 + 2 && crossX < GX1 - 2;
+    if (!onTarget) { this.ball.gkBeaten = true; return; }
+
+    // Did the dive get there? Reach is the keeper's body + arms; a ball near the
+    // edge of the reach is a fingertip — sometimes it still squeezes in.
+    const skill = this.skillFor(gk.side).keeper;
+    const reach = 34 + skill * 40;
+    const gap = Math.abs(crossX - gk.x);
+    if (gap > reach) {
+      this.ball.gkBeaten = true; // beaten — the ball carries on into the net
       return;
     }
-
-    this.ball.flying = false;
-    const from = this.ball.shotFrom ?? { x: this.ball.x, y: gk.side === "us" ? TOP : BOT };
-
-    // Placement gap (px) the keeper must cover to where the ball crosses. The
-    // keeper comfortably covers ~26px; reach falls off out to a ~110px dive.
-    const gap = Math.abs(this.ball.x - gk.x);
-    const placement = clamp((gap - 26) / 84, 0, 1); // 0 = at the keeper, 1 = far corner
-
-    // Shot distance to goal (normalized over a full half ≈ H/2). Close = 0.
-    const goalY = gk.side === "us" ? BOT : TOP;
-    const distN = clamp(Math.abs(from.y - goalY) / (H * 0.5), 0, 1);
-
-    // Angle quality: lateral offset of the shooter from goal-center vs the goal
-    // mouth. Central (good angle) → 0; out near the post (bad angle) → 1.
-    const angleBad = clamp((Math.abs(from.x - W / 2) - GOAL_W / 2) / (W * 0.32), 0, 1);
-
-    // Base save chance: a tame, central, close shot AT the keeper is almost
-    // always saved. Good placement is the dominant beat-the-keeper factor;
-    // distance and a poor angle push the save chance back UP.
-    let saveChance =
-      0.92                       // tame shot straight at the keeper
-      - placement * 0.85         // placed away from the keeper → much likelier goal
-      + distN * 0.30             // struck from distance → easier to save
-      + angleBad * 0.28;         // poor (wide) angle → easier to save
-    saveChance = clamp(saveChance, 0.05, 0.97);
-
-    const saved = Math.random() < saveChance;
-    if (saved) {
-      this.emitCoach(
-        gk.side === "us"
-          ? "Your keeper saves it! Quick — get open for the throw out."
-          : "Saved by the Reds keeper."
-      );
-      this.setRestart({
-        type: "goalkick", team: gk.side,
-        x: W / 2, y: gk.side === "us" ? BOT - 40 : TOP + 40,
-      });
-    } else {
-      // Beaten — the shot is on target and finds the net.
-      this.scoreGoal(gk.side === "us" ? "them" : "us");
+    const holdChance = clamp(0.97 - 0.3 * (gap / reach) + skill * 0.5, 0.3, 0.99);
+    if (Math.random() > holdChance) {
+      this.ball.gkBeaten = true; // got a hand to it but it squirmed in
+      this.emitCoach(gk.side === "them" ? "Got a hand to it — but it's in!" : "Our keeper touched it, but it squeezed in.");
+      return;
     }
+    this.ball.gkBeaten = true;
+    this.ball.flying = false;
+    this.ball.onArrive = null;
+    this.emitCoach(
+      gk.side === "us"
+        ? "Your keeper saves it! Quick — get open for the throw out."
+        : gap < 12 ? "Straight at the keeper — aim for the corners!" : "Great save by the Reds keeper — just enough reach."
+    );
+    this.setRestart({
+      type: "goalkick", team: gk.side,
+      x: W / 2, y: gk.side === "us" ? BOT - 40 : TOP + 40,
+    });
   }
 
   // ---------- AI Passing & Shooting ----------
@@ -2338,38 +2331,35 @@ export class GameEngine {
     return clamp(p, 0.02, 0.75);
   }
 
-  // Strike a shot. The outcome (goal / saved / off target) is decided here from
-  // shotGoalChance, and the ball is aimed to match: goals go to the corner away
-  // from the keeper, saves go within the keeper's reach, misses go wide.
-  // `aimX` is where the shooter was aiming — it picks which side to go for.
+  // Strike a shot. The shooter aims for a corner (the side they were aiming at,
+  // or away from the keeper); how close the ball actually ends up to that spot
+  // depends on distance and pressure — a long or hurried shot sprays, often
+  // wide or straight at the keeper. Nothing is decided here: the keeper then
+  // REACTS and DIVES (moveGK) and keeperSave() settles it at the goal line.
   private takeShot(shooter: Player, aimX: number) {
-    const p = this.shotGoalChance(shooter);
+    const p = this.shotGoalChance(shooter); // expected chance (coach feedback only)
     const goalY = shooter.side === "us" ? TOP - 1 : BOT + 1;
     const gk = shooter.side === "us" ? this.gkThem : this.gkUs;
-    const goalDist = Math.abs(shooter.y - (shooter.side === "us" ? TOP : BOT));
-    // Far-out efforts miss the target more often than they're saved.
-    const onTargetShare = clamp(0.8 - goalDist / 500, 0.35, 0.8);
-    const r = Math.random();
-    let outcome: "goal" | "saved" | "miss";
-    if (r < p) outcome = "goal";
-    else if (r < p + (1 - p) * onTargetShare) outcome = "saved";
-    else outcome = "miss";
+    const goalDist = Math.hypot(shooter.x - W / 2, Math.abs(shooter.y - (shooter.side === "us" ? TOP : BOT)));
 
-    let tx: number;
-    const wantLeft = aimX < W / 2 || (aimX === W / 2 && gk.x > W / 2);
-    if (outcome === "goal") {
-      // Go to the side that was aimed at, unless the keeper is already there.
-      const leftCorner = GX0 + rand(8, 18), rightCorner = GX1 - rand(8, 18);
-      const keeperLeft = gk.x < W / 2;
-      tx = wantLeft ? (keeperLeft && Math.abs(gk.x - leftCorner) < 30 ? rightCorner : leftCorner)
-                    : (!keeperLeft && Math.abs(gk.x - rightCorner) < 30 ? leftCorner : rightCorner);
-    } else if (outcome === "saved") {
-      tx = clamp(gk.x + rand(-28, 28), GX0 + 8, GX1 - 8);
-    } else {
-      tx = wantLeft ? GX0 - rand(14, 70) : GX1 + rand(14, 70);
-    }
+    // Which corner: the side aimed at — but a shooter close in will pick the
+    // side the keeper ISN'T covering.
+    let wantLeft = aimX < W / 2;
+    if (goalDist < 120 && Math.abs(gk.x - W / 2) > 12) wantLeft = gk.x > W / 2;
+    const target = wantLeft ? GX0 + 14 : GX1 - 14;
+
+    // Placement error grows with distance and pressure.
+    let near = 1e9;
+    for (const e of this.enemiesOf(shooter.side)) if (!e.gk) near = Math.min(near, dist(e, shooter));
+    const pressure = near < 28 ? 1.6 : near < 50 ? 1.25 : 1;
+    const errStd = (9 + goalDist * 0.1) * pressure;
+    const tx = target + gauss() * errStd;
+
     this.launchBall(shooter, tx, goalY, "shot");
-    this.ball.shotOutcome = outcome;
+    // Keeper reaction delay before the dive starts (frames at PACE 1).
+    const keeperSkill = this.skillFor(gk.side).keeper;
+    this.ball.gkReact = Math.max(1, Math.round((2 - keeperSkill * 6) / Math.max(0.2, this.PACE)));
+    this.ball.gkBeaten = false;
     return p;
   }
 
@@ -2399,7 +2389,8 @@ export class GameEngine {
         ty += Math.sin(ang) * run;
       }
     }
-    this.ball.shotOutcome = null;
+    this.ball.gkReact = 0;
+    this.ball.gkBeaten = false;
     this.ball.flying = true;
     this.ball.owner = null;
     this.ball.launchedBy = from; // preserve the kicker for the turnover freeze
@@ -2512,7 +2503,7 @@ export class GameEngine {
 
     const ang = Math.atan2(this.ball.ty - this.ball.y, this.ball.tx - this.ball.x);
     const d = Math.hypot(this.ball.tx - this.ball.x, this.ball.ty - this.ball.y);
-    const sp = 9 * this.PACE;
+    const sp = (this.ball.kind === "shot" ? 13 : 9) * this.PACE;
 
     if (d <= sp) {
       this.ball.x = this.ball.tx;
@@ -2524,6 +2515,7 @@ export class GameEngine {
 
     if (this.checkBounds()) return;
     if (this.ball.kind === "pass" && this.checkInterception()) return;
+    if (this.ball.kind === "shot" && this.checkShotBlock()) return;
     if (d <= sp) {
       this.ball.flying = false;
       const f = this.ball.onArrive;
@@ -2556,7 +2548,36 @@ export class GameEngine {
     return false;
   }
 
+  // A defender (not the keeper) standing in the shot's path blocks it; the
+  // loose ball goes to whoever is nearest.
+  private checkShotBlock(): boolean {
+    const shooterSide = this.ball.lastTouch;
+    const from = this.ball.shotFrom;
+    if (!from || Math.hypot(this.ball.x - from.x, this.ball.y - from.y) < 20) return false;
+    const pool = [...(shooterSide === "us" ? this.teamThem : this.teamUs)];
+    if (this.you.side !== shooterSide && !pool.includes(this.you)) pool.push(this.you);
+    for (const p of pool) {
+      if (p.gk || (p.frozenTimer && p.frozenTimer > 0)) continue;
+      // In the lane: blocks most shots (each frame of contact is a chance).
+      if (Math.hypot(p.x - this.ball.x, p.y - this.ball.y) < 13 && Math.random() < 0.4) {
+        this.ball.flying = false;
+        this.ball.onArrive = null;
+        this.emitCoach(shooterSide === "us" ? "Blocked! Find a clearer lane before you shoot." : "Great block!");
+        this.winBall(p);
+        return true;
+      }
+    }
+    return false;
+  }
+
   private checkBounds(): boolean {
+    // A shot reaching the goal line always gets the keeper's attempt first
+    // (a fast shot can cross between frames before the dive is judged).
+    if (this.ball.kind === "shot" && !this.ball.gkBeaten && this.ball.flying &&
+        (this.ball.y <= TOP + 2 || this.ball.y >= BOT - 2)) {
+      this.keeperSave(this.ball.y <= TOP + 2 ? this.gkThem : this.gkUs);
+      if (!this.ball.flying) return true; // saved
+    }
     if (this.ball.y <= TOP + 2 && this.ball.x > GX0 && this.ball.x < GX1) {
       this.scoreGoal("us");
       return true;

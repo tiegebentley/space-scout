@@ -79,7 +79,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const snapshot = state.progress;
       t = setTimeout(() => { void saveProgress(snapshot); }, 800);
     });
-    return () => { if (t) clearTimeout(t); unsub(); };
+    // Flush immediately when the app is backgrounded/closed (phones kill the
+    // WebView without waiting for the debounce).
+    const flush = () => {
+      if (document.visibilityState === "hidden" || !document.hidden) {
+        if (t) { clearTimeout(t); t = null; }
+        void saveProgress(useGameStore.getState().progress);
+      }
+    };
+    const onVis = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      if (t) clearTimeout(t);
+      unsub();
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", flush);
+    };
   }, [userId]);
 
   const signOut = useCallback(async () => {

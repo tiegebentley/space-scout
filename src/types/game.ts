@@ -72,8 +72,10 @@ export interface Ball {
   // Where a shot was struck from (set on launch for kind === "shot"). Lets the
   // keeper weigh save odds by shot distance and angle, not just placement.
   shotFrom?: { x: number; y: number } | null;
-  // Decided when the shot is struck (from the shot's goal chance).
-  shotOutcome?: "goal" | "saved" | "miss" | null;
+  // Shot in flight: frames until the keeper starts the dive, and whether the
+  // keeper has already been beaten (so it isn't re-checked every frame).
+  gkReact?: number;
+  gkBeaten?: boolean;
   // Intended target of a pass (before accuracy error is applied).
   aimX?: number;
   aimY?: number;

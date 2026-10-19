@@ -101,7 +101,7 @@ const DEFAULT_PROGRESS: PlayerProgress = {
 
 export const useGameStore = create<GameStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       currentMode: null,
       matchConfig: {
         duration: 180000,
@@ -141,7 +141,7 @@ export const useGameStore = create<GameStore>()(
           },
         })),
 
-      recordLesson: (lessonId, scorePct) =>
+      recordLesson: (lessonId, scorePct) => {
         set((s) => {
           const done = s.progress.completedLessons ?? [];
           const scores = { ...(s.progress.lessonScores ?? {}) };
@@ -155,7 +155,12 @@ export const useGameStore = create<GameStore>()(
               lessonScores: scores,
             },
           };
-        }),
+        });
+        // Save a completion to the server RIGHT AWAY (not just via the debounced
+        // background sync) so closing the app straight after finishing a lesson
+        // can't lose it. No-op when signed out.
+        void sync.saveProgress(get().progress);
+      },
 
       updateSkill: (skill, delta) =>
         set((s) => ({
