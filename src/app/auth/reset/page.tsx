@@ -23,31 +23,66 @@ function ResetInner() {
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  // Wait for the recovery session to be picked up from the URL. If none ever
-  // arrives, the link was invalid or expired.
+  // Establish the recovery session from whatever token format the reset email
+  // delivered. Supabase can send any of three:
+  //   1. PKCE flow:   ?code=<uuid>            -> exchangeCodeForSession
+  //   2. OTP flow:     ?token_hash=..&type=recovery -> verifyOtp
+  //   3. Legacy hash:  #access_token=..&refresh_token=.. -> setSession
+  // The @supabase/ssr browser client uses PKCE by default, so (1) is the usual
+  // case and must be exchanged explicitly — it does NOT fire onAuthStateChange
+  // on its own, which is why a passive listener timed out as "invalid".
   useEffect(() => {
-    let settled = false;
-    const { data: sub } = supabase.auth.onAuthStateChange((event: string, session: unknown) => {
-      if (event === "PASSWORD_RECOVERY" || session) {
-        settled = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const sb = supabase as unknown as {
+          auth: {
+            getSession: () => Promise<{ data: { session: unknown } }>;
+            exchangeCodeForSession: (code: string) => Promise<{ error: unknown }>;
+            verifyOtp: (args: { token_hash: string; type: string }) => Promise<{ error: unknown }>;
+            setSession: (args: { access_token: string; refresh_token: string }) => Promise<{ error: unknown }>;
+          };
+        };
+
+        // Already have a session (e.g. ssr client auto-exchanged)? Done.
+        const existing = await sb.auth.getSession();
+        if (existing.data.session) { if (!cancelled) setReady(true); return; }
+
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+        const tokenHash = url.searchParams.get("token_hash");
+        const type = url.searchParams.get("type");
+        const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+        const accessToken = hash.get("access_token");
+        const refreshToken = hash.get("refresh_token");
+        const hashError = url.searchParams.get("error_description") || hash.get("error_description");
+
+        let err: unknown = null;
+        if (hashError) {
+          err = new Error(String(hashError));
+        } else if (code) {
+          ({ error: err } = await sb.auth.exchangeCodeForSession(code));
+        } else if (tokenHash) {
+          ({ error: err } = await sb.auth.verifyOtp({ token_hash: tokenHash, type: type || "recovery" }));
+        } else if (accessToken && refreshToken) {
+          ({ error: err } = await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }));
+        } else {
+          err = new Error("missing token");
+        }
+
+        if (cancelled) return;
+        if (err) {
+          setErr("This reset link is invalid or has expired. Request a new one from the sign-in page.");
+          return;
+        }
+        // Clean the token out of the address bar so a refresh can't re-trigger it.
+        window.history.replaceState({}, "", window.location.pathname);
         setReady(true);
+      } catch {
+        if (!cancelled) setErr("This reset link is invalid or has expired. Request a new one from the sign-in page.");
       }
-    });
-    supabase.auth.getSession().then(({ data }: { data: { session: unknown } }) => {
-      if (data.session) {
-        settled = true;
-        setReady(true);
-      }
-    });
-    const t = setTimeout(() => {
-      if (!settled) {
-        setErr("This reset link is invalid or has expired. Request a new one from the sign-in page.");
-      }
-    }, 4000);
-    return () => {
-      sub.subscription.unsubscribe();
-      clearTimeout(t);
-    };
+    })();
+    return () => { cancelled = true; };
   }, [supabase]);
 
   const submit = async (e: React.FormEvent) => {
