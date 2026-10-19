@@ -9,7 +9,8 @@ import { NextResponse, type NextRequest } from "next/server";
 // app-store crawlers (and users not signed in) can reach the legal pages.
 // The Android APK must also stay public — it's downloaded straight from the
 // login screen by people who don't have an account yet.
-const PUBLIC_PREFIXES = ["/login", "/auth", "/privacy", "/terms"];
+// /api/cron is called by Vercel Cron (no user session) and checks CRON_SECRET itself.
+const PUBLIC_PREFIXES = ["/login", "/auth", "/privacy", "/terms", "/api/cron"];
 
 // Public downloadable files that must never be auth-gated (otherwise the
 // request gets redirected to /login and the user downloads the HTML login

@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useGameStore, LEVEL_NAMES } from "@/stores/gameStore";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { ROLE_LABEL } from "@/lib/auth/roles";
@@ -9,6 +10,14 @@ export default function HomePage() {
   const { role, displayName, can, signOut } = useAuth();
   const levelName = LEVEL_NAMES[progress.level] || "Grassroots";
   const pct = progress.xpToNext > 0 ? Math.round((progress.xp / progress.xpToNext) * 100) : 0;
+  // Next scheduled training (from the coach), shown as a banner.
+  const [nextSession, setNextSession] = useState<{ title: string; starts_at: string; teamName: string; location: string | null } | null>(null);
+  useEffect(() => {
+    fetch("/api/team", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      const upcoming = (d?.sessions ?? []).filter((s: { starts_at: string }) => new Date(s.starts_at).getTime() > Date.now());
+      setNextSession(upcoming[0] ?? null);
+    }).catch(() => {});
+  }, []);
 
   return (
     <main className="flex-1 flex items-center justify-center p-4">
@@ -30,6 +39,20 @@ export default function HomePage() {
           <h1 className="font-[Fredoka] font-bold text-3xl text-[#16241c]">Soccer IQ Lab</h1>
           <p className="text-sm font-bold text-[#5d6f63] mt-1">Train your soccer brain</p>
         </div>
+
+        {/* Next training banner */}
+        {nextSession && (
+          <Link href="/team" className="block mb-5">
+            <div className="rounded-2xl bg-[#16241c] text-white p-4 shadow-lg">
+              <p className="text-[10px] font-extrabold tracking-wide text-[#FFC531]">NEXT TRAINING</p>
+              <p className="font-[Fredoka] font-semibold text-lg leading-tight mt-0.5">{nextSession.title}</p>
+              <p className="text-[13px] font-bold opacity-90 mt-0.5">
+                {new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(nextSession.starts_at))}
+                {nextSession.location ? ` · ${nextSession.location}` : ""} · {nextSession.teamName}
+              </p>
+            </div>
+          </Link>
+        )}
 
         {/* Player card */}
         <div className="bg-white rounded-2xl shadow-lg border border-[rgba(20,60,35,.08)] p-5 mb-5">
@@ -95,6 +118,15 @@ export default function HomePage() {
               <p className="text-sm font-semibold text-[#5d6f63] mt-0.5">Passing, movement, defending &amp; more</p>
             </div>
           </div>
+
+          <Link href="/team" className="block">
+            <div className="bg-white text-[#16241c] rounded-2xl p-5 shadow-lg border border-[rgba(20,60,35,.1)] active:translate-y-[2px] transition-transform cursor-pointer">
+              <h2 className="font-[Fredoka] font-semibold text-xl text-[#1F6E3D]">Team &amp; Training</h2>
+              <p className="text-sm font-semibold text-[#5d6f63] mt-0.5">
+                {can("author:open") ? "Your teams, join codes & training schedule" : "Join your team & see upcoming training"}
+              </p>
+            </div>
+          </Link>
 
           <Link href="/progress" className="block">
             <div className="bg-white text-[#16241c] rounded-2xl p-5 shadow-lg border border-[rgba(20,60,35,.1)] active:translate-y-[2px] transition-transform cursor-pointer">
