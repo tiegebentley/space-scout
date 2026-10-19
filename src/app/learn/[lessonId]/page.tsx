@@ -44,7 +44,7 @@ export default function LessonPage({ params }: { params: Promise<{ lessonId: str
 
   return (
     <Suspense fallback={null}>
-      <LessonPlayer lesson={lesson} />
+      <LessonPlayer lesson={lesson} progressId={lessonId} />
     </Suspense>
   );
 }

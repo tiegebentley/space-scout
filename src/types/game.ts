@@ -72,6 +72,11 @@ export interface Ball {
   // Where a shot was struck from (set on launch for kind === "shot"). Lets the
   // keeper weigh save odds by shot distance and angle, not just placement.
   shotFrom?: { x: number; y: number } | null;
+  // Decided when the shot is struck (from the shot's goal chance).
+  shotOutcome?: "goal" | "saved" | "miss" | null;
+  // Intended target of a pass (before accuracy error is applied).
+  aimX?: number;
+  aimY?: number;
 }
 
 export type GameState = "live" | "dead" | "celebrate";
@@ -143,7 +148,7 @@ export interface MatchConfig {
   duration: number; // ms
   format: "3v3" | "5v5" | "7v7";
   speed: number;
-  aiDifficulty: "easy" | "medium" | "hard";
+  aiDifficulty: "easy" | "medium" | "hard" | "elite";
   defensivePressure?: DefensivePressure;
   buildoutLines?: boolean;
   userRole?: string;

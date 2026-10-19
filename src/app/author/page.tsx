@@ -56,7 +56,7 @@ interface DraftScenario {
   userRole: string;          // role the player controls
   oppTacticId: string;       // opponent tactic preset
   duration: number;          // match length (ms)
-  aiDifficulty: "easy" | "medium" | "hard";
+  aiDifficulty: "easy" | "medium" | "hard" | "elite";
   forcedRestart: "" | "throwin" | "goalkick" | "kickoff" | "corner";
   restartTeam: "us" | "them";   // which team starts in possession of the restart
   repSeconds: number;            // 0 = single run; >0 = auto-reset every N seconds

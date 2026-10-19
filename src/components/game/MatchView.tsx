@@ -13,7 +13,7 @@ import { SpeedSlider } from "./SpeedSlider";
 import { useGameLoop } from "@/hooks/useGameLoop";
 import { useGameStore } from "@/stores/gameStore";
 import type { EngineEvent } from "@/engine/GameEngine";
-import type { Score, PillState } from "@/types/game";
+import type { Score, PillState, MatchConfig } from "@/types/game";
 import { SPEED_MAP } from "@/engine/constants";
 import { ALL_TACTICS } from "@/engine/tactics/presets";
 import { clsx } from "clsx";
@@ -44,6 +44,7 @@ export function MatchView() {
   const [activeTactic, setActiveTactic] = useState(matchConfig.tacticId || "possession");
   const [activeOppTactic, setActiveOppTactic] = useState(matchConfig.oppTacticId || "possession");
   const [zoneEditor, setZoneEditor] = useState(false);
+  const [difficulty, setDifficulty] = useState<MatchConfig["aiDifficulty"]>(matchConfig.aiDifficulty ?? "medium");
   const wingerBounds = useGameStore((s) => s.wingerBounds);
   const setWingerBounds = useGameStore((s) => s.setWingerBounds);
 
@@ -157,7 +158,7 @@ export function MatchView() {
       controlsRight && "controls-right"
     )}>
       {/* Header (top inset handled globally by `main` padding). */}
-      <header className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white">
+      <header className="flex items-center justify-between gap-2 sm:gap-3 px-2.5 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white">
         <div className="flex items-center gap-2.5">
           <Link
             href="/"
@@ -165,9 +166,9 @@ export function MatchView() {
             className="shrink-0 flex items-center gap-1.5 rounded-[10px] bg-white/[.18] border border-white/[.3] text-white font-[Fredoka] font-bold text-sm px-3 h-[34px] hover:bg-white/[.3] transition-colors cursor-pointer"
           >
             <span className="text-base leading-none">&#8962;</span>
-            Home
+            <span className="hidden sm:inline">Home</span>
           </Link>
-          <div>
+          <div className="hidden sm:block">
             <h1 className="font-[Fredoka] font-semibold text-lg leading-tight">Soccer IQ Lab</h1>
             <p className="text-[10.5px] opacity-85 font-bold -mt-0.5 tracking-wide">
               {matchConfig.format.toUpperCase()} MATCH
@@ -232,19 +233,14 @@ export function MatchView() {
               instructions read top-to-bottom on small screens instead of being
               clamped. A hint tells the player to scroll for the rest. */}
           {!started && !matchOver && (
-            <div className="absolute inset-2 lg:inset-3 rounded-xl flex items-start lg:items-center justify-center bg-[rgba(11,40,22,.62)] backdrop-blur-sm text-center text-white p-4 lg:p-5 z-20 overflow-y-auto overscroll-contain">
-              <div className="bg-white/[.08] border border-white/[.2] rounded-2xl p-6 lg:p-7 max-w-[400px] w-full my-auto">
+            <div className="fixed lg:absolute inset-0 lg:inset-3 lg:rounded-xl flex items-start lg:items-center justify-center bg-[#123d24]/95 lg:bg-[rgba(11,40,22,.62)] backdrop-blur-sm text-center text-white px-4 pt-[max(env(safe-area-inset-top),20px)] pb-[max(env(safe-area-inset-bottom),20px)] lg:p-5 z-50 lg:z-20 overflow-y-auto overscroll-contain">
+              <div className="bg-white/[.08] border border-white/[.2] rounded-2xl p-5 sm:p-6 lg:p-7 max-w-[420px] w-full my-auto">
                 <h2 className="font-[Fredoka] font-semibold text-[24px] mb-3">
                   {matchConfig.format.toUpperCase()} Match
                 </h2>
                 <p className="text-[13.5px] leading-relaxed opacity-95 font-semibold">
                   You always control the <b>blue player with the gold ring</b>. Attack the <b>top</b> goal.
                   When your team has the ball, find space to receive. When you <b>lose</b> it, chase and defend!
-                </p>
-                {/* Mobile-only cue: the card can run past the screen — let players
-                    know to scroll for the rest before kicking off. */}
-                <p className="lg:hidden mt-3 text-[11px] font-extrabold tracking-wide text-[#FFD166] animate-pulse">
-                  ↓ Scroll down to read the rest
                 </p>
                 <div className="flex flex-col gap-2.5 text-left mt-5 text-[12.5px] font-bold">
                   <div className="flex items-center gap-2.5">
@@ -260,7 +256,25 @@ export function MatchView() {
                     Reds (opponents)
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 mt-6 text-[12.5px] font-extrabold justify-center">
+                {/* Defender difficulty — how hard the Reds are to dribble past. */}
+                <div className="mt-5">
+                  <p className="text-[11px] font-extrabold tracking-wide opacity-80 mb-2">DEFENDER DIFFICULTY</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {(["easy", "medium", "hard", "elite"] as const).map((d) => (
+                      <TapButton
+                        key={d}
+                        onTap={() => { setDifficulty(d); engine.current?.setDifficulty(d); }}
+                        className={clsx(
+                          "rounded-lg py-2 text-[12px] font-extrabold capitalize cursor-pointer border transition-colors",
+                          difficulty === d ? "bg-[#FFC531] text-[#16241c] border-[#FFC531]" : "bg-white/10 border-white/25 text-white"
+                        )}
+                      >
+                        {d}
+                      </TapButton>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5 mt-5 text-[12.5px] font-extrabold justify-center">
                   <span>Slow</span>
                   <input
                     type="range"

@@ -14,7 +14,11 @@ import { ScenarioView } from "./ScenarioView";
 import { useGameStore } from "@/stores/gameStore";
 import type { Lesson } from "@/types/lessons";
 
-export function LessonPlayer({ lesson }: { lesson: Lesson }) {
+export function LessonPlayer({ lesson, progressId }: { lesson: Lesson; progressId?: string }) {
+  // Progress is keyed by the id the COURSE lists (the route id). A saved edit of
+  // a built-in has id "custom-of-<id>", and recording under that id meant the
+  // course never showed the lesson as done.
+  const pid = progressId ?? lesson.id;
   const router = useRouter();
   const searchParams = useSearchParams();
   const setMatchConfig = useGameStore((s) => s.setMatchConfig);
@@ -90,23 +94,23 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   // step's button becomes "Complete Lesson" → records the lesson and shows the
   // summary (which links back to the lessons list).
   const finishLesson = useCallback(() => {
-    recordLesson(lesson.id, pct);
+    recordLesson(pid, pct);
     setShowSummary(true);
-  }, [lesson.id, pct, recordLesson]);
+  }, [pid, pct, recordLesson]);
 
   const launchGame = useCallback(() => {
     if (step.kind !== "play") return;
     // Launch straight into the configured game (skip the /play setup screen).
     // Carry lesson context so the game's "Full time" screen can route back here
     // to the feedback summary — every completed lesson should be ratable.
-    recordLesson(lesson.id, pct);
+    recordLesson(pid, pct);
     setMatchConfig({
       ...step.matchConfig,
       fromLesson: true,
-      lessonReturn: { id: lesson.id, title: lesson.title, score, total: scenarioCount, pct },
+      lessonReturn: { id: pid, title: lesson.title, score, total: scenarioCount, pct },
     });
     router.push("/play");
-  }, [step, lesson.id, pct, recordLesson, setMatchConfig, router]);
+  }, [step, pid, lesson.title, score, scenarioCount, pct, recordLesson, setMatchConfig, router]);
 
   const retry = useCallback(() => {
     setResults({});

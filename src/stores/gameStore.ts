@@ -60,6 +60,25 @@ function calcLevel(totalXp: number): { level: number; xp: number; xpToNext: numb
   return { level, xp: totalXp - current, xpToNext: next - current };
 }
 
+// Merge two progress snapshots without losing anything: completions are unioned,
+// best scores kept, counters take the max. Used when signing in so a completion
+// recorded on this device but not yet saved to the server isn't wiped by the
+// (older) server copy.
+export function mergeProgress(a: PlayerProgress, b: PlayerProgress): PlayerProgress {
+  const base = (b.totalXp ?? 0) > (a.totalXp ?? 0) ? b : a;
+  const scores: Record<string, number> = { ...(a.lessonScores ?? {}) };
+  for (const [k, v] of Object.entries(b.lessonScores ?? {})) scores[k] = Math.max(scores[k] ?? 0, v);
+  const longer = <T,>(x: T[] = [], y: T[] = []) => (x.length >= y.length ? x : y);
+  return {
+    ...base,
+    completedLessons: Array.from(new Set([...(a.completedLessons ?? []), ...(b.completedLessons ?? [])])),
+    lessonScores: scores,
+    achievements: Array.from(new Set([...(a.achievements ?? []), ...(b.achievements ?? [])])),
+    drillsCompleted: longer(a.drillsCompleted, b.drillsCompleted),
+    matchesPlayed: Math.max(a.matchesPlayed ?? 0, b.matchesPlayed ?? 0),
+  };
+}
+
 const DEFAULT_PROGRESS: PlayerProgress = {
   level: 0,
   xp: 0,
@@ -217,15 +236,17 @@ export const useGameStore = create<GameStore>()(
           localOnly.forEach((l) => void sync.upsertLesson(l, false)); // migrate up
           const merged = [...remoteLessons.map((r) => r.lesson), ...localOnly];
           const published = remoteLessons.filter((r) => r.isPublished).map((r) => r.lesson.id);
-          // Progress: if the server has none yet, push our local progress up.
-          if (!remoteProgress) void sync.saveProgress(s.progress);
+          // Progress: merge server + local (nothing completed on this device is
+          // lost), then push the merged result up.
+          const mergedProgress = remoteProgress ? mergeProgress(s.progress, remoteProgress) : s.progress;
+          void sync.saveProgress(mergedProgress);
           const presets = remotePresets.length
             ? remotePresets.map((p) => p.data as RulePreset)
             : s.customPresets;
           return {
             customLessons: merged,
             publishedIds: Array.from(new Set([...s.publishedIds, ...published])),
-            progress: remoteProgress ?? s.progress,
+            progress: mergedProgress,
             customPresets: presets,
           };
         });

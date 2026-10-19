@@ -14,6 +14,25 @@ import { TACTIC_POSSESSION } from "./tactics/presets";
 import { getTactic } from "./tactics/presets";
 
 function rand(a: number, b: number) { return a + Math.random() * (b - a); }
+// Cheap approx-normal in roughly [-2, 2] (sum of uniforms), for pass error.
+function gauss() { return (Math.random() + Math.random() + Math.random() - 1.5) * 1.15; }
+
+// Defender difficulty — applies to the OPPOSITION (the Reds) when they defend.
+// chase: closing speed multiplier · contact: tackle reach (px) · frontDot: how
+// far around the carrier a tackle can come from (lower = tackles from the side
+// count too) · intercept: pass-interception reach (px) · immunity: frames of
+// tackle-immunity after YOU win the ball · keeper: extra save skill.
+export type DefenderDifficulty = "easy" | "medium" | "hard" | "elite";
+export const DEFENDER_SKILL: Record<DefenderDifficulty, { chase: number; contact: number; frontDot: number; intercept: number; immunity: number; keeper: number }> = {
+  easy:   { chase: 0.80, contact: 18, frontDot: 0.40,  intercept: 11, immunity: 130, keeper: -0.10 },
+  medium: { chase: 1.00, contact: 22, frontDot: 0.15,  intercept: 15, immunity: 90,  keeper: 0 },
+  hard:   { chase: 1.14, contact: 26, frontDot: -0.20, intercept: 19, immunity: 65,  keeper: 0.06 },
+  elite:  { chase: 1.30, contact: 30, frontDot: -0.55, intercept: 23, immunity: 40,  keeper: 0.12 },
+};
+const BASE_SKILL = DEFENDER_SKILL.medium;
+// You can shoot from anywhere in the other team's half; the chance model makes
+// long-range efforts low-percentage instead of forbidding them.
+const SHOOT_LINE = H * 0.5;
 function clamp(v: number, a: number, b: number) { return v < a ? a : v > b ? b : v; }
 function dist(a: Position, b: Position) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function angDiff(a: number, b: number) { const d = Math.abs(a - b) % (2 * Math.PI); return d > Math.PI ? 2 * Math.PI - d : d; }
@@ -92,6 +111,9 @@ export class GameEngine {
   private shapeThem: TeamShapeEngine;
   private lastPoss: "us" | "them" = "us";
   private possChangedFrames = 0;
+  // Last canPass/canShoot pushed to the UI — re-emitted whenever it changes so
+  // the Shoot button lights up the moment you dribble into range.
+  private lastActionSig = "";
 
   showBuildoutLines = false;
   showZoneEditor = false;
@@ -594,6 +616,7 @@ export class GameEngine {
       this.moveGK(this.gkThem);
       this.pressCarrier();
       if (this.passCooldown > 0) this.passCooldown--;
+      this.receiverAttackBall();
       this.aiConsiderPass();
       this.moveBall();
     } else {
@@ -631,6 +654,24 @@ export class GameEngine {
     if (this.timeLeft <= 0) this.endMatch();
 
     this.updateFacingAll();
+    this.syncActionState();
+  }
+
+  // The intended receiver of a pass moves to meet the ball where it will arrive
+  // (instead of the ball "teleporting" to wherever they wandered). You steer
+  // yourself — a pass to you only arrives if you're there to take it.
+  private receiverAttackBall() {
+    const b = this.ball;
+    const r = b.targetPlayer;
+    if (!b.flying || b.kind !== "pass" || !r || r === this.you || r.gk) return;
+    if (r.frozenTimer && r.frozenTimer > 0) return;
+    // Run to where the pass was MEANT to go — a wayward ball can beat them.
+    this.easeToward(r, b.aimX ?? b.tx, b.aimY ?? b.ty, 2.3 * this.PACE);
+  }
+
+  private syncActionState() {
+    const sig = `${this.canPass ? 1 : 0}${this.canShoot ? 1 : 0}`;
+    if (sig !== this.lastActionSig) this.emitActionUpdate();
   }
 
   // If the ball carrier (player or AI) runs out of bounds, trigger appropriate restart
@@ -1124,7 +1165,7 @@ export class GameEngine {
     }
 
     this.giveBall(p);
-    this.stealImmunity = 90;
+    this.stealImmunity = p.side === "us" ? this.defSkill.immunity : 90;
     this.passCooldown = Math.round(18 / Math.max(0.5, this.PACE));
 
     // Clean getaway: commit the new carrier to the single most open escape
@@ -1537,7 +1578,8 @@ export class GameEngine {
 
       if (!roamed) {
         // Box runs are sprints — the runner has to ARRIVE before the cross.
-        const sp = (boxRun ? 2.6 : m === ballChaser ? (attacking ? 2.1 : 2.8) : (attacking ? 1.8 : 1.6)) * this.PACE * (backoff ? 0.5 : 1);
+        const chaseMul = !attacking && m.side === "them" ? this.defSkill.chase : 1;
+        const sp = (boxRun ? 2.6 : m === ballChaser ? (attacking ? 2.1 : 2.8) : (attacking ? 1.8 : 1.6)) * this.PACE * (backoff ? 0.5 : 1) * chaseMul;
         const ang = Math.atan2(ty - m.y, tx - m.x);
         const dd = Math.hypot(tx - m.x, ty - m.y);
         if (dd > 1.5) {
@@ -1716,6 +1758,22 @@ export class GameEngine {
   }
 
   // Get the effective defensive pressure setting
+  private get defSkill() {
+    const lvl = (this.config.aiDifficulty ?? "medium") as DefenderDifficulty;
+    return DEFENDER_SKILL[lvl] ?? BASE_SKILL;
+  }
+  // Skill used by a given defender: the Reds use the chosen difficulty; your own
+  // AI teammates always defend at the normal level.
+  private skillFor(side: "us" | "them") {
+    return side === "them" ? this.defSkill : BASE_SKILL;
+  }
+  setDifficulty(level: DefenderDifficulty) {
+    this.config.aiDifficulty = level;
+  }
+  get difficulty(): DefenderDifficulty {
+    return (this.config.aiDifficulty ?? "medium") as DefenderDifficulty;
+  }
+
   private get defPressure(): import("@/types/game").DefensivePressure {
     return this.config.defensivePressure || "medium";
   }
@@ -1756,7 +1814,7 @@ export class GameEngine {
 
   // The defender must approach from the FRONT of the carrier's movement direction.
   // Contact from behind or the side doesn't win the ball.
-  private isFrontTackle(defender: Position, carrier: Position, mv: Position): boolean {
+  private isFrontTackle(defender: Position, carrier: Position, mv: Position, minDot = 0.15): boolean {
     const dx = defender.x - carrier.x, dy = defender.y - carrier.y;
     const d = Math.hypot(dx, dy);
     if (d < 1) return true;
@@ -1764,7 +1822,7 @@ export class GameEngine {
     if (mvlen < 0.01) return true; // carrier stationary, any contact works
     // dot product: positive = defender is AHEAD of the carrier's movement
     const dot = (dx * mv.x + dy * mv.y) / (d * mvlen);
-    return dot > 0.15; // must be roughly in front of movement direction
+    return dot > minDot; // must be roughly in front of movement direction (harder defenders reach wider)
   }
 
   private pressCarrier() {
@@ -1796,7 +1854,8 @@ export class GameEngine {
       if (dq.gk) continue;
       if (dq === this.recentLoser) continue;
       if (dq.frozenTimer && dq.frozenTimer > 0) continue;
-      if (dist(dq, carrier) < CONTACT && this.isFrontTackle(dq, carrier, mv)) {
+      const sk = this.skillFor(dq.side);
+      if (dist(dq, carrier) < sk.contact && this.isFrontTackle(dq, carrier, mv, sk.frontDot)) {
         this.winBall(dq);
         this.lastCarrierPos = null;
         return;
@@ -1896,6 +1955,23 @@ export class GameEngine {
     // turns it into a goal kick / corner). Only on-target shots are saved/scored.
     const onTarget = this.ball.x > GX0 - 6 && this.ball.x < GX1 + 6;
     if (!onTarget) return;
+    // Shots now decide their outcome when struck (see takeShot). A "goal" beats
+    // the keeper and runs into the net; a "miss" never needs saving.
+    if (this.ball.shotOutcome === "goal" || this.ball.shotOutcome === "miss") return;
+    if (this.ball.shotOutcome === "saved") {
+      this.ball.flying = false;
+      this.ball.shotOutcome = null;
+      this.emitCoach(
+        gk.side === "us"
+          ? "Your keeper saves it! Quick — get open for the throw out."
+          : "Saved by the Reds keeper."
+      );
+      this.setRestart({
+        type: "goalkick", team: gk.side,
+        x: W / 2, y: gk.side === "us" ? BOT - 40 : TOP + 40,
+      });
+      return;
+    }
 
     this.ball.flying = false;
     const from = this.ball.shotFrom ?? { x: this.ball.x, y: gk.side === "us" ? TOP : BOT };
@@ -2223,10 +2299,78 @@ export class GameEngine {
   }
 
   private aiShoot(carrier: Player) {
-    const goalY = carrier.side === "us" ? TOP - 1 : BOT + 1;
-    const aimX = clamp(W / 2 + rand(-GOAL_W * 0.4, GOAL_W * 0.4), GX0 + 6, GX1 - 6);
-    this.launchBall(carrier, aimX, goalY, "shot");
+    this.takeShot(carrier, W / 2 + rand(-GOAL_W * 0.4, GOAL_W * 0.4));
     this.emitCoach(carrier.side === "us" ? "Shot by your team!" : "Reds are shooting!");
+  }
+
+  // Chance a shot from this spot ends up in the net (0..1). Driven by how much of
+  // the goal mouth the shooter can see (angle) and how far out they are, then cut
+  // by pressure on the shooter, bodies in the shooting lane, and keeper skill.
+  //   • point-blank, central:      ~55-60%
+  //   • edge of the box, central:  ~35-40%
+  //   • well outside the box:      ~5-15%
+  //   • wide / tight angle:        ~3-8%
+  shotGoalChance(shooter: Player): number {
+    const goalY = shooter.side === "us" ? TOP : BOT;
+    const dy = Math.max(4, Math.abs(shooter.y - goalY));
+    const distPx = Math.hypot(shooter.x - W / 2, dy);
+    const angle = Math.abs(Math.atan2(dy, GX0 - shooter.x) - Math.atan2(dy, GX1 - shooter.x));
+    let p = 0.62 * Math.pow(clamp(angle / 2.0, 0, 1), 1.3) * clamp(1 - (distPx - 60) / 400, 0.2, 1);
+
+    const enemies = this.enemiesOf(shooter.side);
+    // Pressure from OUTFIELD defenders only (the keeper is already the save).
+    let near = 1e9;
+    for (const e of enemies) if (!e.gk) near = Math.min(near, Math.hypot(e.x - shooter.x, e.y - shooter.y));
+    if (near < 28) p *= 0.65; else if (near < 50) p *= 0.85;
+    // Outfield defenders standing in the line between shooter and goal block shots.
+    const gx = W / 2, gy = goalY;
+    const len = Math.hypot(gx - shooter.x, gy - shooter.y) || 1;
+    for (const e of enemies) {
+      if (e.gk) continue;
+      const t = ((e.x - shooter.x) * (gx - shooter.x) + (e.y - shooter.y) * (gy - shooter.y)) / (len * len);
+      if (t <= 0.05 || t >= 1) continue;
+      const px = shooter.x + (gx - shooter.x) * t, py = shooter.y + (gy - shooter.y) * t;
+      if (Math.hypot(e.x - px, e.y - py) < 22) p *= 0.6;
+    }
+    // A better keeper (harder difficulty) saves more of YOUR shots.
+    const keeperSkill = this.skillFor(shooter.side === "us" ? "them" : "us").keeper;
+    p *= 1 - keeperSkill * 1.5;
+    return clamp(p, 0.02, 0.75);
+  }
+
+  // Strike a shot. The outcome (goal / saved / off target) is decided here from
+  // shotGoalChance, and the ball is aimed to match: goals go to the corner away
+  // from the keeper, saves go within the keeper's reach, misses go wide.
+  // `aimX` is where the shooter was aiming — it picks which side to go for.
+  private takeShot(shooter: Player, aimX: number) {
+    const p = this.shotGoalChance(shooter);
+    const goalY = shooter.side === "us" ? TOP - 1 : BOT + 1;
+    const gk = shooter.side === "us" ? this.gkThem : this.gkUs;
+    const goalDist = Math.abs(shooter.y - (shooter.side === "us" ? TOP : BOT));
+    // Far-out efforts miss the target more often than they're saved.
+    const onTargetShare = clamp(0.8 - goalDist / 500, 0.35, 0.8);
+    const r = Math.random();
+    let outcome: "goal" | "saved" | "miss";
+    if (r < p) outcome = "goal";
+    else if (r < p + (1 - p) * onTargetShare) outcome = "saved";
+    else outcome = "miss";
+
+    let tx: number;
+    const wantLeft = aimX < W / 2 || (aimX === W / 2 && gk.x > W / 2);
+    if (outcome === "goal") {
+      // Go to the side that was aimed at, unless the keeper is already there.
+      const leftCorner = GX0 + rand(8, 18), rightCorner = GX1 - rand(8, 18);
+      const keeperLeft = gk.x < W / 2;
+      tx = wantLeft ? (keeperLeft && Math.abs(gk.x - leftCorner) < 30 ? rightCorner : leftCorner)
+                    : (!keeperLeft && Math.abs(gk.x - rightCorner) < 30 ? leftCorner : rightCorner);
+    } else if (outcome === "saved") {
+      tx = clamp(gk.x + rand(-28, 28), GX0 + 8, GX1 - 8);
+    } else {
+      tx = wantLeft ? GX0 - rand(14, 70) : GX1 + rand(14, 70);
+    }
+    this.launchBall(shooter, tx, goalY, "shot");
+    this.ball.shotOutcome = outcome;
+    return p;
   }
 
   private doPass(from: Player, to: Player) {
@@ -2234,6 +2378,28 @@ export class GameEngine {
   }
 
   private launchBall(from: Player, tx: number, ty: number, kind: "pass" | "shot", toPlayer?: Player | null) {
+    // Pass accuracy: every pass carries a little error that grows with distance
+    // and with pressure on the passer. A wayward pass doesn't reach its man — it
+    // runs loose, and if a Red gets there first it's a turnover.
+    this.ball.aimX = tx; this.ball.aimY = ty; // where the pass was MEANT to go
+    if (kind === "pass" && toPlayer && !from.gk) {
+      const len = Math.hypot(tx - from.x, ty - from.y);
+      const near = this.nearestEnemy(from.x, from.y, from.side);
+      const pressure = near < 30 ? 2.3 : near < 55 ? 1.5 : 1;
+      const err = len * 0.06 * pressure;
+      const ang = Math.atan2(ty - from.y, tx - from.x);
+      const side = gauss() * err, along = gauss() * err * 0.6;
+      tx += Math.cos(ang) * along - Math.sin(ang) * side;
+      ty += Math.sin(ang) * along + Math.cos(ang) * side;
+      // A genuinely bad pass doesn't stop politely next to the receiver — it
+      // runs on past them (toward touchlines / defenders).
+      if (Math.hypot(side, along) > 20) {
+        const run = rand(25, 60);
+        tx += Math.cos(ang) * run;
+        ty += Math.sin(ang) * run;
+      }
+    }
+    this.ball.shotOutcome = null;
     this.ball.flying = true;
     this.ball.owner = null;
     this.ball.launchedBy = from; // preserve the kicker for the turnover freeze
@@ -2251,6 +2417,13 @@ export class GameEngine {
     this.ball.onArrive = () => {
       if (kind === "shot") {
         this.resolveShotMiss(from.side);
+        return;
+      }
+      // Receiving: the target only gets it if they actually reached the ball.
+      // You get a slightly bigger window (you're steering with a thumb).
+      const reach = toPlayer === this.you ? 34 : 24;
+      if (toPlayer && dist(toPlayer, this.ball) > reach) {
+        this.looseBall(from);
         return;
       }
       if (toPlayer) {
@@ -2274,6 +2447,39 @@ export class GameEngine {
         if (best) this.giveBall(best);
       }
     };
+  }
+
+  // A pass that missed its target: the nearest outfield player to where it
+  // stopped collects it. If that's an opponent, it's a turnover.
+  private looseBall(passer: Player) {
+    // A misplaced pass is a turnover whenever a defender is anywhere near it;
+    // the passing team only keeps it if no opponent is within reach.
+    const opps = (passer.side === "us" ? this.teamThem : this.teamUs).filter((p) => !p.gk);
+    if (passer.side !== this.you.side && !opps.includes(this.you)) opps.push(this.you);
+    let best: Player | null = null, bd = 1e9;
+    for (const p of opps) {
+      const dd = dist(p, this.ball);
+      if (dd < bd) { bd = dd; best = p; }
+    }
+    if (!best || bd > 110) {
+      best = null; bd = 1e9;
+      for (const p of [...this.teamUs, ...this.teamThem]) {
+        if (p.gk) continue;
+        const dd = dist(p, this.ball);
+        if (dd < bd) { bd = dd; best = p; }
+      }
+    }
+    if (!best) return;
+    if (best.side !== passer.side) {
+      this.emitCoach(
+        passer.side === "us"
+          ? "Pass went astray — turnover! Shorter, safer passes when you're under pressure."
+          : "Reds misplaced it — your ball! Go!"
+      );
+      this.winBall(best);
+    } else {
+      this.giveBall(best);
+    }
   }
 
   private resolveShotMiss(side: "us" | "them") {
@@ -2335,7 +2541,7 @@ export class GameEngine {
     for (const p of pool) {
       if (p.gk) continue;
       if (p.frozenTimer && p.frozenTimer > 0) continue;
-      if (Math.hypot(p.x - this.ball.x, p.y - this.ball.y) < 16) {
+      if (Math.hypot(p.x - this.ball.x, p.y - this.ball.y) < this.skillFor(p.side).intercept) {
         this.ball.flying = false;
         this.ball.onArrive = null;
         this.winBall(p);
@@ -2459,22 +2665,21 @@ export class GameEngine {
 
   doPlayerShoot(): boolean {
     if (!this.youHasBall || this.gstate !== "live") return false;
-    if (this.you.y >= ATT_THIRD) {
-      this.emitCoach("Get into the attacking third (past the dotted line) to shoot.");
+    if (this.you.y >= SHOOT_LINE) {
+      this.emitCoach("Get into the other team's half to shoot.");
       return false;
     }
 
+    // Aim where you're facing if you're facing the goal; otherwise just shoot
+    // at goal (the side you're drifting toward picks the corner).
     const fx = Math.cos(this.you.face), fy = Math.sin(this.you.face);
-    if (fy > -0.15) {
-      this.emitCoach("Face toward the goal before you shoot — steer upward, then press S.");
-      return false;
-    }
-
-    const dy = (TOP - 1) - this.you.y;
-    const tX = this.you.x + fx * (dy / fy);
-    const aimX = clamp(tX, GX0 - 30, GX1 + 30);
-    this.launchBall(this.you, aimX, TOP - 1, "shot");
-    this.emitCoach("You're shooting! Great to get into a shooting spot.");
+    const aimX = fy < -0.15 ? this.you.x + fx * (((TOP - 1) - this.you.y) / fy) : this.you.x;
+    const p = this.takeShot(this.you, aimX);
+    this.emitCoach(
+      p >= 0.35 ? "Great shooting spot — close and central!"
+        : p >= 0.15 ? "Decent chance. Closer and more central is even better."
+        : "Long shot / tight angle — low chance. Get closer to goal or find a better angle."
+    );
     this.emitActionUpdate();
     return true;
   }
@@ -2484,7 +2689,7 @@ export class GameEngine {
   }
 
   get canShoot(): boolean {
-    return this.youHasBall && this.gstate === "live" && this.you.y < ATT_THIRD;
+    return this.youHasBall && this.gstate === "live" && this.you.y < SHOOT_LINE;
   }
 
   // ---------- Facing ----------
@@ -2590,6 +2795,7 @@ export class GameEngine {
   }
 
   private emitActionUpdate() {
+    this.lastActionSig = `${this.canPass ? 1 : 0}${this.canShoot ? 1 : 0}`;
     this.emit({ type: "actionUpdate", canPass: this.canPass, canShoot: this.canShoot });
   }
 

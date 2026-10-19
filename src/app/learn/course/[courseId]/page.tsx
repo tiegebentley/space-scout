@@ -79,7 +79,7 @@ export default function CoursePage({ params }: { params: Promise<{ courseId: str
             // shipped built-in, so the course shows what you last saved.
             const lesson = resolveLesson(id, customLessons);
             const edited = built && customLessons.some((l) => l.id === editedIdFor(id));
-            const done = completed.includes(id);
+            const done = completed.includes(id) || completed.includes(editedIdFor(id));
             const title = lesson?.title ?? prettifyId(id);
 
             if (!built && !lesson) {

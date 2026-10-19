@@ -101,11 +101,11 @@ export function MatchSetupControls({ value, onChange, disabled = false }: Props)
 
       {/* AI difficulty */}
       <div>
-        <p className="text-xs font-extrabold tracking-wide text-[#5d6f63] mb-2.5">AI DIFFICULTY</p>
-        <div className="flex gap-2.5">
-          {(["easy", "medium", "hard"] as const).map((d) => (
+        <p className="text-xs font-extrabold tracking-wide text-[#5d6f63] mb-2.5">DEFENDER DIFFICULTY</p>
+        <div className="grid grid-cols-4 gap-2">
+          {(["easy", "medium", "hard", "elite"] as const).map((d) => (
             <button key={d} onClick={() => onChange({ aiDifficulty: d })}
-              className={clsx("flex-1 rounded-xl py-3 border-2 font-[Fredoka] font-semibold text-base capitalize cursor-pointer transition-all",
+              className={clsx("rounded-xl py-3 border-2 font-[Fredoka] font-semibold text-sm capitalize cursor-pointer transition-all",
                 (value.aiDifficulty || "medium") === d ? "border-[#2B8A4E] bg-[#eafaef] shadow-md" : "border-[rgba(20,60,35,.1)] bg-white hover:border-[#2B8A4E]/40")}>
               {d}
             </button>

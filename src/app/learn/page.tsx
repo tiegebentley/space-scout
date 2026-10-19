@@ -41,7 +41,7 @@ export default function LearnPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
           {COURSES.map((course) => {
             const builtIds = course.lessonIds.filter((id) => id in LESSONS);
-            const doneCount = builtIds.filter((id) => completed.includes(id)).length;
+            const doneCount = builtIds.filter((id) => completed.includes(id) || completed.includes(`custom-of-${id}`)).length;
             const total = course.lessonIds.length;
             const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
