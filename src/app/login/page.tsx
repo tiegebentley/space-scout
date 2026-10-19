@@ -240,6 +240,21 @@ function LoginInner() {
 
         <div className="mt-4 pt-4 border-t border-[rgba(20,60,35,.1)] text-center">
           <a href={landingUrl}
+            target={inApp ? "_blank" : undefined}
+            rel={inApp ? "noopener noreferrer" : undefined}
+            onClick={(e) => {
+              // Inside the native app, open the marketing site in the device's
+              // real browser instead of navigating within the app WebView.
+              if (inApp) {
+                e.preventDefault();
+                const w = window as unknown as {
+                  open: (u: string, t?: string) => Window | null;
+                };
+                // "_system" is Capacitor's external-browser target; _blank is the
+                // browser fallback.
+                w.open(landingUrl, "_system") || w.open(landingUrl, "_blank");
+              }
+            }}
             className="inline-flex items-center gap-1.5 text-xs font-bold text-[#5d6f63] hover:text-[#1F6E3D] hover:underline">
             <span aria-hidden>←</span> Back to Soccer IQ Lab
           </a>
