@@ -99,7 +99,7 @@ function LoginInner() {
   // Direct Android download (sideload). Served from /public; overridable via env.
   const androidApkUrl = process.env.NEXT_PUBLIC_ANDROID_APK_URL || "/soccer-iq-lab.apk";
 
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -133,6 +133,16 @@ function LoginInner() {
     e.preventDefault();
     setBusy(true); setErr(null); setInfo(null);
     try {
+      if (mode === "forgot") {
+        // Send a password-reset email. The link lands on /auth/reset where the
+        // user sets a new password. redirectTo must be allow-listed in the
+        // Supabase dashboard (Authentication -> URL Configuration).
+        const redirectTo = `${window.location.origin}/auth/reset`;
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+        if (error) throw error;
+        setInfo("If an account exists for that email, a reset link is on its way. Check your inbox.");
+        return;
+      }
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
           email, password,
@@ -162,7 +172,7 @@ function LoginInner() {
         <div className="text-center mb-5">
           <div className="text-3xl">&#9917;</div>
           <h1 className="font-[Fredoka] font-bold text-2xl text-[#16241c]">Soccer IQ Lab</h1>
-          <p className="text-sm font-semibold text-[#5d6f63]">{mode === "login" ? "Sign in to continue" : "Create your account"}</p>
+          <p className="text-sm font-semibold text-[#5d6f63]">{mode === "login" ? "Sign in to continue" : mode === "signup" ? "Create your account" : "Reset your password"}</p>
         </div>
 
         <form onSubmit={submit} className="flex flex-col gap-3">
@@ -174,6 +184,7 @@ function LoginInner() {
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required
             placeholder="Email" autoComplete="email"
             className="rounded-xl border border-[rgba(20,60,35,.15)] px-3 py-2.5 text-sm font-semibold" />
+          {mode !== "forgot" && (
           <div className="relative">
             <input value={password} onChange={(e) => setPassword(e.target.value)} type={showPw ? "text" : "password"} required
               placeholder="Password" autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -184,20 +195,35 @@ function LoginInner() {
               {showPw ? "Hide" : "Show"}
             </button>
           </div>
+          )}
+          {mode === "login" && (
+            <button type="button"
+              onClick={() => { setMode("forgot"); setErr(null); setInfo(null); }}
+              className="self-end text-xs font-bold text-[#2E6FE0] hover:underline cursor-pointer -mt-1">
+              Forgot password?
+            </button>
+          )}
 
           {err && <p className="text-xs font-bold text-[#E0463B]">{err}</p>}
           {info && <p className="text-xs font-bold text-[#1e5e36]">{info}</p>}
 
           <button type="submit" disabled={busy}
             className="rounded-xl bg-[#2B8A4E] text-white font-[Fredoka] font-bold text-base py-3 disabled:opacity-50 cursor-pointer">
-            {busy ? "…" : mode === "login" ? "Sign in" : "Create account"}
+            {busy ? "…" : mode === "login" ? "Sign in" : mode === "signup" ? "Create account" : "Send reset link"}
           </button>
         </form>
 
-        <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setErr(null); setInfo(null); }}
-          className="w-full mt-3 text-xs font-bold text-[#2E6FE0] hover:underline cursor-pointer">
-          {mode === "login" ? "No account? Sign up (as a player)" : "Have an account? Sign in"}
-        </button>
+        {mode === "forgot" ? (
+          <button onClick={() => { setMode("login"); setErr(null); setInfo(null); }}
+            className="w-full mt-3 text-xs font-bold text-[#2E6FE0] hover:underline cursor-pointer">
+            &larr; Back to sign in
+          </button>
+        ) : (
+          <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setErr(null); setInfo(null); }}
+            className="w-full mt-3 text-xs font-bold text-[#2E6FE0] hover:underline cursor-pointer">
+            {mode === "login" ? "No account? Sign up (as a player)" : "Have an account? Sign in"}
+          </button>
+        )}
 
         {!inApp && (
         <div className="mt-4 pt-4 border-t border-[rgba(20,60,35,.1)]">
