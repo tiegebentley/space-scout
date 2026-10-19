@@ -2,6 +2,7 @@
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
+import { createClient } from "@supabase/supabase-js";
 
 function StoreBadge({
   store,
@@ -138,7 +139,18 @@ function LoginInner() {
         // user sets a new password. redirectTo must be allow-listed in the
         // Supabase dashboard (Authentication -> URL Configuration).
         const redirectTo = `${window.location.origin}/auth/reset`;
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+        // Use a dedicated implicit-flow client for the reset request. The default
+        // @supabase/ssr client uses PKCE, whose link only works in the SAME browser
+        // that requested it (it stores a one-time verifier there). Reset emails are
+        // usually opened from a mail app in a different browser, so PKCE links fail
+        // as "invalid or expired". Implicit links carry the tokens in the URL hash
+        // and work in any browser.
+        const resetClient = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } },
+        );
+        const { error } = await resetClient.auth.resetPasswordForEmail(email, { redirectTo });
         if (error) throw error;
         setInfo("If an account exists for that email, a reset link is on its way. Check your inbox.");
         return;

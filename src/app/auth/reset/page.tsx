@@ -22,6 +22,8 @@ function ResetInner() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Snapshot the landing URL immediately (tokens live in the query/hash).
+  const [landingHref] = useState(() => (typeof window !== "undefined" ? window.location.href : ""));
 
   // Establish the recovery session from whatever token format the reset email
   // delivered. Supabase can send any of three:
@@ -48,11 +50,11 @@ function ResetInner() {
         const existing = await sb.auth.getSession();
         if (existing.data.session) { if (!cancelled) setReady(true); return; }
 
-        const url = new URL(window.location.href);
+        const url = new URL(landingHref || window.location.href);
         const code = url.searchParams.get("code");
         const tokenHash = url.searchParams.get("token_hash");
         const type = url.searchParams.get("type");
-        const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+        const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
         const accessToken = hash.get("access_token");
         const refreshToken = hash.get("refresh_token");
         const hashError = url.searchParams.get("error_description") || hash.get("error_description");
@@ -83,7 +85,7 @@ function ResetInner() {
       }
     })();
     return () => { cancelled = true; };
-  }, [supabase]);
+  }, [supabase, landingHref]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
