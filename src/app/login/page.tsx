@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 
@@ -108,6 +108,27 @@ function LoginInner() {
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  // Detect whether the page is running inside the native Capacitor app shell
+  // (vs a normal web browser). When it is, we hide the "Get the mobile app"
+  // download section — the user already has the app.
+  const [inApp, setInApp] = useState(false);
+  useEffect(() => {
+    try {
+      const w = window as unknown as {
+        Capacitor?: { isNativePlatform?: () => boolean };
+      };
+      // Canonical Capacitor check, plus the native URL scheme as a fallback.
+      const isCap = Boolean(
+        w.Capacitor?.isNativePlatform?.() === true ||
+          window.location.protocol === "capacitor:" ||
+          window.location.protocol === "https:" && Boolean(w.Capacitor),
+      );
+      setInApp(isCap);
+    } catch {
+      setInApp(false);
+    }
+  }, []);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr(null); setInfo(null);
@@ -178,6 +199,7 @@ function LoginInner() {
           {mode === "login" ? "No account? Sign up (as a player)" : "Have an account? Sign in"}
         </button>
 
+        {!inApp && (
         <div className="mt-4 pt-4 border-t border-[rgba(20,60,35,.1)]">
           <p className="text-center text-[11px] font-bold uppercase tracking-wide text-[#9aa79f] mb-2.5">
             Get the mobile app
@@ -214,6 +236,7 @@ function LoginInner() {
             />
           </div>
         </div>
+        )}
 
         <div className="mt-4 pt-4 border-t border-[rgba(20,60,35,.1)] text-center">
           <a href={landingUrl}
