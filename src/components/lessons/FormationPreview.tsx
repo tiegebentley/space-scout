@@ -189,50 +189,65 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
   };
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
-  // Drag a rule box (move whole box, or resize via its corner). Works in
-  // fractional space so it round-trips cleanly to the ZoneRule bounds.
-  const onRuleDown = (rule: ZoneRule, handle: "move" | "se") => (e: React.PointerEvent) => {
+  // ── Boundary-box editing (touch friendly) ───────────────────────────────────
+  // Everything is done in SCREEN space (viewBox units) and converted back to
+  // the rule's fractional bounds, so it's independent of the board's rotation.
+  // Pointer → viewBox coords.
+  const toView = (cx: number, cy: number) => {
+    const rb = svgRef.current!.getBoundingClientRect();
+    return { x: ((cx - rb.left) / rb.width) * VIEW_W, y: ((cy - rb.top) / rb.height) * VIEW_H };
+  };
+  // Screen rect (viewBox units) → fractional rule bounds.
+  const screenToBounds = (x0: number, y0: number, x1: number, y1: number): RuleBounds => {
+    const a = screenToLab(x0, y0), b = screenToLab(x1, y1);
+    const fx0 = a.y / PH, fx1 = b.y / PH, fy0 = a.x / PW, fy1 = b.x / PW;
+    return {
+      xMin: clamp01(Math.min(fx0, fx1)), xMax: clamp01(Math.max(fx0, fx1)),
+      yMin: clamp01(Math.min(fy0, fy1)), yMax: clamp01(Math.max(fy0, fy1)),
+    };
+  };
+  const EDGE_MIN = 6, EDGE_MAX_X = VIEW_W - 6, EDGE_MAX_Y = VIEW_H - 6;
+  const MIN_SIZE = 40; // viewBox units — keeps a box grabbable
+
+  // Start a move ("move") or a resize from a handle. `edges` says which screen
+  // edges the handle drags: l/r/t/b. The grab offset is kept so nothing jumps.
+  type Edges = { l?: boolean; r?: boolean; t?: boolean; b?: boolean };
+  const onRuleDrag = (rule: ZoneRule, edges: Edges | "move") => (e: React.PointerEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     onSelectRule?.(rule.id);
     if (!onUpdateRule) return;
-    const orig: RuleBounds = { xMin: rule.xMin, xMax: rule.xMax, yMin: rule.yMin, yMax: rule.yMax };
-    const w = orig.xMax - orig.xMin, h = orig.yMax - orig.yMin;
-    if (handle === "move") {
-      const start = toFraction(e.clientX, e.clientY);
-      const move = (ev: PointerEvent) => {
-        const p = toFraction(ev.clientX, ev.clientY);
-        const nx = clamp01(Math.min(orig.xMin + (p.fx - start.fx), 1 - w));
-        const ny = clamp01(Math.min(orig.yMin + (p.fy - start.fy), 1 - h));
-        onUpdateRule(rule.id, { xMin: nx, yMin: ny, xMax: nx + w, yMax: ny + h });
-      };
-      const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-      window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-      return;
-    }
-    // Resize: pin the SCREEN corner diagonally opposite the handle, and let the
-    // pointer drive the dragged corner — robust to the board's rotation. Both
-    // screen corners are converted back to fractions and normalized.
-    const rs = ruleScreenRect(orig.xMin, orig.xMax, orig.yMin, orig.yMax);
-    const anchorScreen = { sx: rs.sx, sy: rs.sy }; // screen NW (fixed)
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
+    const r0 = ruleScreenRect(rule.xMin, rule.xMax, rule.yMin, rule.yMax);
+    const box0 = { l: r0.sx, t: r0.sy, r: r0.sx + r0.w, b: r0.sy + r0.h };
+    const p0 = toView(e.clientX, e.clientY);
     const move = (ev: PointerEvent) => {
-      const a = toFraction(anchorScreenToClient(anchorScreen).x, anchorScreenToClient(anchorScreen).y);
-      const p = toFraction(ev.clientX, ev.clientY);
-      const b: RuleBounds = {
-        xMin: clamp01(Math.min(a.fx, p.fx)), xMax: clamp01(Math.max(a.fx, p.fx)),
-        yMin: clamp01(Math.min(a.fy, p.fy)), yMax: clamp01(Math.max(a.fy, p.fy)),
-      };
-      if (b.xMax - b.xMin < 0.05) b.xMax = b.xMin + 0.05;
-      if (b.yMax - b.yMin < 0.05) b.yMax = b.yMin + 0.05;
-      onUpdateRule(rule.id, b);
+      const p = toView(ev.clientX, ev.clientY);
+      const dx = p.x - p0.x, dy = p.y - p0.y;
+      let { l, t, r, b } = box0;
+      if (edges === "move") {
+        const w = r - l, h = b - t;
+        l = Math.max(EDGE_MIN, Math.min(EDGE_MAX_X - w, l + dx));
+        t = Math.max(EDGE_MIN, Math.min(EDGE_MAX_Y - h, t + dy));
+        r = l + w; b = t + h;
+      } else {
+        if (edges.l) l = Math.max(EDGE_MIN, Math.min(r - MIN_SIZE, box0.l + dx));
+        if (edges.r) r = Math.min(EDGE_MAX_X, Math.max(l + MIN_SIZE, box0.r + dx));
+        if (edges.t) t = Math.max(EDGE_MIN, Math.min(b - MIN_SIZE, box0.t + dy));
+        if (edges.b) b = Math.min(EDGE_MAX_Y, Math.max(t + MIN_SIZE, box0.b + dy));
+      }
+      // Snap boxes that reach the pitch edge to the full edge (0 / 1).
+      const snap = (v: number, lo: number, hi: number) => (v - lo < 8 ? lo - 6 : hi - v < 8 ? hi + 6 : v);
+      onUpdateRule(rule.id, screenToBounds(snap(l, EDGE_MIN, EDGE_MAX_X), snap(t, EDGE_MIN, EDGE_MAX_Y), snap(r, EDGE_MIN, EDGE_MAX_X), snap(b, EDGE_MIN, EDGE_MAX_Y)));
     };
-    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-  };
-
-  // SVG-screen coords → client (px) so we can feed them back through toFraction.
-  const anchorScreenToClient = (s: { sx: number; sy: number }) => {
-    const svg = svgRef.current!; const rb = svg.getBoundingClientRect();
-    return { x: rb.left + (s.sx / VIEW_W) * rb.width, y: rb.top + (s.sy / VIEW_H) * rb.height };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   const ruleId = typeof placeMode === "string" && placeMode.startsWith("rule:") ? placeMode.slice(5) : null;
@@ -325,16 +340,44 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
             <rect x={x} y={y} width={w} height={h}
               fill={blue ? "rgba(46,111,224,.12)" : "rgba(224,70,59,.12)"} stroke={blue ? "rgba(46,111,224,.8)" : "rgba(224,70,59,.8)"}
               strokeWidth={sel ? 4 : 2} strokeDasharray="8 6" rx={8} opacity={interactive && !sel ? 0.55 : 1}
-              style={editable ? { cursor: "move" } : undefined}
+              style={editable ? { cursor: "move", touchAction: "none" } : undefined}
               pointerEvents={editable ? undefined : "none"}
-              onPointerDown={editable ? onRuleDown(z, "move") : undefined} />
-            {editable && <>
-              <circle cx={x + w} cy={y + h} r={10} fill="#FFD166" stroke="#16241c" strokeWidth={2} style={{ cursor: "nwse-resize" }} onPointerDown={onRuleDown(z, "se")} />
-              <g style={{ cursor: "pointer" }} onPointerDown={(e) => { e.stopPropagation(); onDeleteRule?.(z.id); }}>
-                <circle cx={x + w} cy={y} r={10} fill="#E0463B" stroke="#fff" strokeWidth={2} />
-                <text x={x + w} y={y + 4} textAnchor="middle" fontSize={13} fontWeight={900} fill="#fff" style={{ pointerEvents: "none" }}>×</text>
-              </g>
-            </>}
+              onPointerDown={editable ? onRuleDrag(z, "move") : undefined} />
+            {editable && (() => {
+              // Handles sit ON the box's corners/edges but are pulled inside the
+              // board so they're always reachable (even for a full-width box).
+              const ix = (v: number) => Math.max(18, Math.min(VIEW_W - 18, v));
+              const iy = (v: number) => Math.max(18, Math.min(VIEW_H - 18, v));
+              const cx = x + w / 2, cy = y + h / 2;
+              const handles: { key: string; hx: number; hy: number; edges: Edges; cursor: string; corner: boolean }[] = [
+                { key: "nw", hx: x, hy: y, edges: { l: true, t: true }, cursor: "nwse-resize", corner: true },
+                { key: "ne", hx: x + w, hy: y, edges: { r: true, t: true }, cursor: "nesw-resize", corner: true },
+                { key: "sw", hx: x, hy: y + h, edges: { l: true, b: true }, cursor: "nesw-resize", corner: true },
+                { key: "se", hx: x + w, hy: y + h, edges: { r: true, b: true }, cursor: "nwse-resize", corner: true },
+                { key: "n", hx: cx, hy: y, edges: { t: true }, cursor: "ns-resize", corner: false },
+                { key: "s", hx: cx, hy: y + h, edges: { b: true }, cursor: "ns-resize", corner: false },
+                { key: "w", hx: x, hy: cy, edges: { l: true }, cursor: "ew-resize", corner: false },
+                { key: "e", hx: x + w, hy: cy, edges: { r: true }, cursor: "ew-resize", corner: false },
+              ];
+              return <>
+                {handles.map((hd) => (
+                  <g key={hd.key} style={{ cursor: hd.cursor, touchAction: "none" }} onPointerDown={onRuleDrag(z, hd.edges)}>
+                    {/* finger-sized invisible hit area */}
+                    <circle cx={ix(hd.hx)} cy={iy(hd.hy)} r={hd.corner ? 30 : 26} fill="#000" fillOpacity={0.001} />
+                    {hd.corner
+                      ? <circle cx={ix(hd.hx)} cy={iy(hd.hy)} r={12} fill="#FFD166" stroke="#16241c" strokeWidth={2} pointerEvents="none" />
+                      : <rect x={ix(hd.hx) - (hd.key === "n" || hd.key === "s" ? 16 : 6)} y={iy(hd.hy) - (hd.key === "n" || hd.key === "s" ? 6 : 16)}
+                          width={hd.key === "n" || hd.key === "s" ? 32 : 12} height={hd.key === "n" || hd.key === "s" ? 12 : 32}
+                          rx={6} fill="#FFD166" stroke="#16241c" strokeWidth={2} pointerEvents="none" />}
+                  </g>
+                ))}
+                {/* Delete — inside the box's top edge, clear of the corner handle */}
+                <g style={{ cursor: "pointer" }} onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onDeleteRule?.(z.id); }}>
+                  <circle cx={ix(cx + Math.min(60, w / 4))} cy={iy(y + 22)} r={14} fill="#E0463B" stroke="#fff" strokeWidth={2} />
+                  <text x={ix(cx + Math.min(60, w / 4))} y={iy(y + 22) + 5} textAnchor="middle" fontSize={15} fontWeight={900} fill="#fff" style={{ pointerEvents: "none" }}>×</text>
+                </g>
+              </>;
+            })()}
           </g>
         );
       })}
@@ -344,7 +387,8 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
       {preview && (() => { const r = labRect(preview); return <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="rgba(255,209,102,.30)" stroke="#FFD166" strokeWidth={4} strokeDasharray="8 6" rx={8} pointerEvents="none" />; })()}
 
       {tokens.map((t, i) => (
-        <g key={i} style={positionMode ? { cursor: "grab" } : undefined}
+        <g key={i} style={positionMode ? { cursor: "grab", touchAction: "none" } : undefined}
+          pointerEvents={positionMode ? undefined : "none"}
           onPointerDown={positionMode ? onPlayerDown(t.side, t.role) : undefined}>
           <circle cx={t.x} cy={t.y} r={20} fill={t.side === "us" ? HOME : AWAY}
             stroke={t.you ? "#FFD166" : t.moved ? "#16241c" : "rgba(255,255,255,.85)"} strokeWidth={t.you || t.moved ? 5 : 2} />
