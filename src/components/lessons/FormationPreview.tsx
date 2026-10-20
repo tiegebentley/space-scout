@@ -312,7 +312,11 @@ export function FormationPreview({ format, userRole, zoneRules, placeMode, resta
   return (
     <svg ref={svgRef} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
       onPointerDown={onPointerDown}
-      className={`w-full max-w-[420px] mx-auto block rounded-2xl border-2 shadow-sm ${placeMode ? "border-[#FFD166] cursor-crosshair touch-none select-none" : positionMode ? "border-[#2B8A4E] touch-none select-none" : "border-[rgba(20,60,35,.15)]"}`}>
+      // While a boundary box is selected for editing, the board stops the page
+      // from scrolling (phones ignore touch-action on individual SVG shapes, so
+      // it has to be set on the board itself) — otherwise a drag turns into a
+      // scroll and the box feels sticky.
+      className={`w-full max-w-[420px] mx-auto block rounded-2xl border-2 shadow-sm ${placeMode ? "border-[#FFD166] cursor-crosshair touch-none select-none" : positionMode ? "border-[#2B8A4E] touch-none select-none" : selectedRuleId && onUpdateRule ? "border-[#FFD166] touch-none select-none" : "border-[rgba(20,60,35,.15)]"}`}>
       {Array.from({ length: 10 }).map((_, i) => (
         <rect key={i} x={0} y={(VIEW_H / 10) * i} width={VIEW_W} height={VIEW_H / 10} fill={i % 2 ? "#2F9354" : "#2B8A4E"} />
       ))}
