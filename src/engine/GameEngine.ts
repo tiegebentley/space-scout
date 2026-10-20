@@ -826,7 +826,10 @@ export class GameEngine {
       // The winger on the side the ball is at takes corners AND throw-ins: a left
       // (low-x) restart goes to the LW, a right (high-x) restart to the RW. Falls
       // back to the nearest teammate if that winger isn't on the pitch.
-      const wingRole = r.x < W / 2 ? "lw" : "rw";
+      // Left/right from the TEAM's point of view: Blues attack up the screen
+      // (their left = screen left); Reds attack down (their left = screen right).
+      const onTeamsLeft = r.team === "us" ? r.x < W / 2 : r.x > W / 2;
+      const wingRole = onTeamsLeft ? "lw" : "rw";
       taker = this.teammateByRole(r.team, wingRole) ?? this.nearestTeammateTo(r.team, r.x, r.y, true);
     } else {
       taker = this.nearestTeammateTo(r.team, r.x, r.y, true);
@@ -870,54 +873,10 @@ export class GameEngine {
         const bestSpot = this.findOpenSpace(p, r.x, r.y, enemies, r.team);
         p.x = bestSpot.x;
         p.y = bestSpot.y;
-      } else if (r.type === "throwin") {
-        // On throw-ins, keep players on THEIR OWN side of the pitch. The far-side
-        // winger (e.g. the RW on a left throw-in) stays wide in its own channel —
-        // it should NOT drift across to the thrower's side. Only a player whose
-        // home is already near the throw-in shows short for it.
-        const h = this.homeXY(p.side, p.home);
-        const role = this.roleKeyOf(p);
-        const isWinger = role === "lw" || role === "rw";
-        const nearThrowSide = (h.x < W / 2) === (r.x < W / 2); // same half as the throw
-        if (isWinger && !nearThrowSide) {
-          // Far-side winger: hold the width on its own side, push up the line.
-          p.x = h.x;
-          p.y = clamp(r.y + dir * rand(60, 130), TOP + 20, BOT - 20);
-        } else if (nearThrowSide && Math.abs(h.x - r.x) < (R - L) * 0.3) {
-          // Same-side support: show SHORT and angled, just off the thrower.
-          p.x = clamp(r.x + (r.x < W / 2 ? 60 : -60), L + 30, R - 30);
-          p.y = clamp(r.y + dir * rand(30, 80), TOP + 20, BOT - 20);
-        } else {
-          // Everyone else holds their home width, stepping up into space.
-          p.x = h.x;
-          p.y = clamp(r.y + dir * rand(70, 150), TOP + 20, BOT - 20);
-        }
-      } else if (r.type === "corner") {
-        // On corners give the attacking side a real shape around the taker so
-        // there's support, not a random scatter. The opp goal line is r.team's
-        // attacking end; the corner is taken from the near corner at r.x.
-        const goalY = r.team === "us" ? TOP : BOT;
-        const nearPost = r.x < W / 2;                 // which side the corner is on
-        const role = this.roleKeyOf(p);
-        if (role === "hold") {
-          // #6 supports SHORT — a few steps off the taker for the give-and-go.
-          p.x = clamp(r.x + (nearPost ? 70 : -70), L + 24, R - 24);
-          p.y = clamp(goalY - dir * 70, TOP + 20, BOT - 20);
-        } else if (role === "fwd" || role === "am") {
-          // The central attacker (striker / attacking mid) attacks the goal —
-          // central, right in front of the net.
-          p.x = clamp(W / 2 + rand(-20, 20), GX0, GX1);
-          p.y = clamp(goalY - dir * 36, TOP + 16, BOT - 16);
-        } else if (role === "lw" || role === "rw") {
-          // The OTHER winger holds the FAR post (opposite the taker's corner).
-          p.x = clamp(nearPost ? GX1 + 24 : GX0 - 24, L + 24, R - 24);
-          p.y = clamp(goalY - dir * 30, TOP + 16, BOT - 16);
-        } else {
-          // Any other role (e.g. 7v7 mids): get into the box.
-          const boxY = goalY - dir * 60;
-          p.x = clamp(GX0 + rand(-40, GOAL_W + 40), L + 30, R - 30);
-          p.y = clamp(boxY + rand(-30, 30), TOP + 20, BOT - 20);
-        }
+      } else if (r.type === "throwin" || r.type === "corner") {
+        const spot = this.setPieceSpot(p, r, dir);
+        p.x = spot.x;
+        p.y = spot.y;
       } else {
         // Kickoff: go to home positions
         const h = this.homeXY(p.side, p.home);
@@ -926,24 +885,50 @@ export class GameEngine {
       }
     }
 
-    // Throw-ins: guarantee a short option — the nearest team-mate (not a far-side
-    // winger) comes to show for it, a few steps up the line from the thrower.
-    if (r.type === "throwin") {
-      const mates = team.filter((p) => !p.gk && p !== r.taker);
-      const close = mates.some((p) => Math.hypot(p.x - r.x, p.y - r.y) < 150);
-      if (!close && mates.length) {
-        mates.sort((a, b) => Math.hypot(a.x - r.x, a.y - r.y) - Math.hypot(b.x - r.x, b.y - r.y));
-        const sup = mates[0];
-        sup.x = clamp(r.x + (r.x < W / 2 ? 75 : -75), L + 30, R - 30);
-        sup.y = clamp(r.y + dir * 55, TOP + 20, BOT - 20);
-      }
-    }
-
     // The defending team gets set positions too (goal kicks already placed the
     // opposition from the goal-kick setups above).
     if (r.type === "throwin" || r.type === "corner") this.positionDefendersForRestart(r);
     if (r.type === "goalkick") this.keepOutOfBoxForGoalkick(r);
     this.enforceRestartSpacing(r);
+  }
+
+  // Where a player on the team TAKING a throw-in / corner stands, by role.
+  // `in` points from the touchline/corner toward the middle of the pitch;
+  // `dir` is the team's attacking direction (+y for Reds, -y for Blues).
+  private setPieceSpot(p: Player, r: Restart, dir: number): Position {
+    const role = this.roleKeyOf(p);
+    const inward = r.x < W / 2 ? 1 : -1;
+    const h = this.homeXY(p.side, p.home);
+    const onTeamsLeft = (x: number) => (r.team === "us" ? x < W / 2 : x > W / 2);
+    const sameSideAsBall = onTeamsLeft(h.x) === onTeamsLeft(r.x);
+    const isWinger = role === "lw" || role === "rw";
+
+    if (r.type === "throwin") {
+      // #10 / attacking mid: shows UP the line, a pass down the touchline.
+      if (role === "fwd" || role === "am") return { x: r.x + inward * 70, y: r.y + dir * 95 };
+      // #6: comes inside and slightly BACK — the safe angled option.
+      if (role === "hold") return { x: r.x + inward * 165, y: r.y - dir * 35 };
+      // Winger on the far side: holds the width on their own flank, level-ish.
+      if (isWinger && !sameSideAsBall) return { x: h.x, y: r.y + dir * 45 };
+      // Near-side winger who isn't throwing: short, straight down the line.
+      if (isWinger) return { x: r.x + inward * 40, y: r.y + dir * 55 };
+      // Centre backs (7v7): hold the back line, shifted toward the ball.
+      return { x: h.x + (r.x - h.x) * 0.25, y: h.y };
+    }
+
+    // Corner. goalY = the goal being attacked; k px "out" from the goal line.
+    const goalY = r.team === "us" ? TOP : BOT;
+    const out = (k: number) => goalY - dir * k;
+    const farPost = inward > 0 ? GX1 : GX0;
+    // Other winger: just outside the far post, at the edge of the six.
+    if (isWinger) return { x: farPost + inward * 22, y: out(58) };
+    // #10 / attacking mid: central at the edge of the box, ready to attack it.
+    if (role === "fwd" || role === "am") return { x: W / 2 - inward * 18, y: out(BOX_H + 6) };
+    // #6 (the free player): top of the box on the near side — short option,
+    // cut-back target, and first to any clearance.
+    if (role === "hold") return { x: W / 2 - inward * BOX_HALF_W * 0.7, y: out(BOX_H + 40) };
+    // Centre backs (7v7): stay back around halfway as cover.
+    return { x: h.x, y: clamp(H / 2 - dir * 30, TOP + 20, BOT - 20) };
   }
 
   // Defending shape for throw-ins and corners: mark the attackers goal-side.

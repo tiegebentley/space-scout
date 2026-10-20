@@ -303,5 +303,18 @@ function LoginInner() {
 }
 
 export default function LoginPage() {
-  return <Suspense fallback={<main className="flex-1" />}><LoginInner /></Suspense>;
+  // The fallback is what's in the page's first HTML — show the logo straight
+  // away instead of a blank screen while the sign-in form's code loads.
+  return (
+    <Suspense
+      fallback={
+        <main className="flex-1 flex flex-col items-center justify-center p-4">
+          <div className="text-5xl mb-2">&#9917;</div>
+          <p className="font-[Fredoka] font-bold text-2xl text-[#16241c]">Soccer IQ Lab</p>
+        </main>
+      }
+    >
+      <LoginInner />
+    </Suspense>
+  );
 }
