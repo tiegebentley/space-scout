@@ -114,6 +114,7 @@ export class GameEngine {
   // Last canPass/canShoot pushed to the UI — re-emitted whenever it changes so
   // the Shoot button lights up the moment you dribble into range.
   private lastActionSig = "";
+  private attackScanTimer = 0;
 
   showBuildoutLines = false;
   showZoneEditor = false;
@@ -371,7 +372,7 @@ export class GameEngine {
     for (const e of en) {
       if (e.gk || (e.frozenTimer && e.frozenTimer > 0)) continue;
       // only enemies ahead (goal-ward) of the carrier matter for a forward lane
-      const ahead = (goalY - e.y) * this.attackDir(p.side) > -20;
+      const ahead = (e.y - p.y) * this.attackDir(p.side) > -20; // enemy level with or goal-ward of the carrier
       if (!ahead) continue;
       const d = segDist(e.x, e.y, p.x, p.y, laneX, goalY);
       if (d < nearest) nearest = d;
@@ -621,8 +622,10 @@ export class GameEngine {
       this.moveBall();
     } else {
       this.keyMove();
-      this.moveGK(this.gkUs);
-      this.moveGK(this.gkThem);
+      // Keepers hold their line during a stoppage — except a keeper taking the
+      // goal kick, who stays standing over the ball.
+      if (this.restart?.taker !== this.gkUs) this.moveGK(this.gkUs);
+      if (this.restart?.taker !== this.gkThem) this.moveGK(this.gkThem);
       // "enter-zone" start: once YOU step into the receive zone (after a short
       // grace so it can't fire on frame 0 if you spawn in it), stop waiting and
       // arm a short get-set delay so the ball is played in a beat LATER — you
@@ -854,7 +857,7 @@ export class GameEngine {
     }
 
     for (const p of team) {
-      if (p.gk || p === r.taker || p === this.you) continue;
+      if (p.gk || p === r.taker) continue;
 
       // Authored start position wins over the restart-type repositioning below,
       // so a player you placed (e.g. the #10 pushed up to press) stays put on
@@ -879,15 +882,15 @@ export class GameEngine {
         if (isWinger && !nearThrowSide) {
           // Far-side winger: hold the width on its own side, push up the line.
           p.x = h.x;
-          p.y = clamp(r.y - dir * rand(60, 130), TOP + 20, BOT - 20);
+          p.y = clamp(r.y + dir * rand(60, 130), TOP + 20, BOT - 20);
         } else if (nearThrowSide && Math.abs(h.x - r.x) < (R - L) * 0.3) {
           // Same-side support: show SHORT and angled, just off the thrower.
           p.x = clamp(r.x + (r.x < W / 2 ? 60 : -60), L + 30, R - 30);
-          p.y = clamp(r.y - dir * rand(30, 80), TOP + 20, BOT - 20);
+          p.y = clamp(r.y + dir * rand(30, 80), TOP + 20, BOT - 20);
         } else {
           // Everyone else holds their home width, stepping up into space.
           p.x = h.x;
-          p.y = clamp(r.y - dir * rand(70, 150), TOP + 20, BOT - 20);
+          p.y = clamp(r.y + dir * rand(70, 150), TOP + 20, BOT - 20);
         }
       } else if (r.type === "corner") {
         // On corners give the attacking side a real shape around the taker so
@@ -921,6 +924,94 @@ export class GameEngine {
         p.x = h.x;
         p.y = h.y;
       }
+    }
+
+    // Throw-ins: guarantee a short option — the nearest team-mate (not a far-side
+    // winger) comes to show for it, a few steps up the line from the thrower.
+    if (r.type === "throwin") {
+      const mates = team.filter((p) => !p.gk && p !== r.taker);
+      const close = mates.some((p) => Math.hypot(p.x - r.x, p.y - r.y) < 150);
+      if (!close && mates.length) {
+        mates.sort((a, b) => Math.hypot(a.x - r.x, a.y - r.y) - Math.hypot(b.x - r.x, b.y - r.y));
+        const sup = mates[0];
+        sup.x = clamp(r.x + (r.x < W / 2 ? 75 : -75), L + 30, R - 30);
+        sup.y = clamp(r.y + dir * 55, TOP + 20, BOT - 20);
+      }
+    }
+
+    // The defending team gets set positions too (goal kicks already placed the
+    // opposition from the goal-kick setups above).
+    if (r.type === "throwin" || r.type === "corner") this.positionDefendersForRestart(r);
+    if (r.type === "goalkick") this.keepOutOfBoxForGoalkick(r);
+    this.enforceRestartSpacing(r);
+  }
+
+  // Defending shape for throw-ins and corners: mark the attackers goal-side.
+  private positionDefendersForRestart(r: Restart) {
+    const defSide: "us" | "them" = r.team === "us" ? "them" : "us";
+    const defenders = (defSide === "us" ? this.teamUs : this.teamThem).filter((p) => !p.gk);
+    const attackers = (r.team === "us" ? this.teamUs : this.teamThem).filter((p) => !p.gk && p !== r.taker);
+    const ownGoalY = defSide === "us" ? BOT : TOP;
+    const towardOwnGoal = defSide === "us" ? 1 : -1;
+    const free = [...defenders];
+    // Most dangerous attackers first (closest to the defenders' goal).
+    const threats = [...attackers].sort((a, b) => Math.abs(a.y - ownGoalY) - Math.abs(b.y - ownGoalY));
+
+    if (r.type === "corner") {
+      // One defender guards the near post.
+      const nearPostX = r.x < W / 2 ? GX0 + 10 : GX1 - 10;
+      free.sort((a, b) => Math.hypot(a.x - nearPostX, a.y - ownGoalY) - Math.hypot(b.x - nearPostX, b.y - ownGoalY));
+      const post = free.shift();
+      if (post) { post.x = nearPostX; post.y = ownGoalY - towardOwnGoal * 22; }
+    }
+    // Everyone else marks an attacker: goal-side and slightly toward the middle.
+    for (const a of threats) {
+      if (!free.length) break;
+      free.sort((p, q) => dist(p, a) - dist(q, a));
+      const d = free.shift()!;
+      const markGap = r.type === "corner" ? 14 : 20;
+      d.x = clamp(a.x + (W / 2 - a.x) * 0.08, L + 10, R - 10);
+      d.y = clamp(a.y + towardOwnGoal * markGap, TOP + 8, BOT - 8);
+    }
+    // Spare defenders hold the edge of the box (corner) or their home shape.
+    for (const d of free) {
+      if (r.type === "corner") {
+        d.x = clamp(W / 2 + rand(-BOX_HALF_W * 0.6, BOX_HALF_W * 0.6), L + 20, R - 20);
+        d.y = ownGoalY - towardOwnGoal * (BOX_H + 30);
+      } else {
+        const h = this.homeXY(d.side, d.home);
+        d.x = h.x + (r.x - h.x) * 0.25;
+        d.y = h.y;
+      }
+    }
+  }
+
+  // Goal kicks: the other team waits outside the penalty box.
+  private keepOutOfBoxForGoalkick(r: Restart) {
+    const opp = (r.team === "us" ? this.teamThem : this.teamUs).filter((p) => !p.gk);
+    const goalY = r.team === "us" ? BOT : TOP;
+    for (const p of opp) {
+      const inBoxX = Math.abs(p.x - W / 2) < BOX_HALF_W + 12;
+      const depth = Math.abs(p.y - goalY);
+      if (inBoxX && depth < BOX_H + 24) p.y = goalY + (r.team === "us" ? -1 : 1) * (BOX_H + 24);
+    }
+  }
+
+  // Nobody crowds the ball at a restart: opponents stay at least ~50px away,
+  // team-mates (other than the taker) at least ~30px, all inside the pitch.
+  private enforceRestartSpacing(r: Restart) {
+    for (const p of [...this.teamUs, ...this.teamThem]) {
+      if (p === r.taker || p.gk) continue;
+      const minD = p.side === r.team ? 30 : 50;
+      const dx = p.x - r.x, dy = p.y - r.y;
+      const d = Math.hypot(dx, dy);
+      if (d < minD) {
+        const ang = d > 0.5 ? Math.atan2(dy, dx) : Math.atan2(H / 2 - r.y, W / 2 - r.x);
+        p.x = r.x + Math.cos(ang) * minD;
+        p.y = r.y + Math.sin(ang) * minD;
+      }
+      p.x = clamp(p.x, L + 8, R - 8);
+      p.y = clamp(p.y, TOP + 8, BOT - 8);
     }
   }
 
@@ -1242,7 +1333,7 @@ export class GameEngine {
     const lane = clamp(this.laneClear(p.x, p.y, from.x, from.y, p.side) / 26, 0, 1);
     const d = dist(p, from);
     const range = d < 55 ? d / 55 : d > 340 ? Math.max(0, 1 - (d - 340) / 200) : 1;
-    const fwd = clamp(((from.y - p.y) * this.attackDir(p.side)) / (H * 0.5), 0, 1) * 0.5 + 0.5;
+    const fwd = clamp(((p.y - from.y) * this.attackDir(p.side)) / (H * 0.5), 0, 1) * 0.5 + 0.5;
     return clamp(open * 0.36 + lane * 0.40 + range * 0.14 + fwd * 0.10, 0, 1);
   }
 
@@ -1481,7 +1572,7 @@ export class GameEngine {
             const ang = (a / 8) * Math.PI - Math.PI / 2;
             const rr = 90;
             const nx = clamp(refx + Math.sin(ang) * rr, L + 24, R - 24);
-            const ny = clamp(refy - dir * Math.cos(ang) * rr, TOP + 24, BOT - 24);
+            const ny = clamp(refy + dir * Math.cos(ang) * rr, TOP + 24, BOT - 24); // AHEAD of the ball
             const sp0 = this.availability({ x: nx, y: ny, side: m.side }, carrier || m);
             const prog = m.side === "us" ? (BOT - ny) / (BOT - TOP) : (ny - TOP) / (BOT - TOP);
             const sc = sp0 * 0.45 + prog * 0.55;
@@ -1901,7 +1992,7 @@ export class GameEngine {
           const dir = this.attackDir(gk.side);
           const side = Math.random() < 0.5 ? -1 : 1;
           const tx = clamp(W / 2 + side * rand(150, 250), L + 30, R - 30);
-          const ty = clamp(gk.y - dir * rand(120, 200), TOP + 30, BOT - 30);
+          const ty = clamp(gk.y + dir * rand(120, 200), TOP + 30, BOT - 30); // clear it UP the pitch
           this.launchBall(gk, tx, ty, "pass", null);
         }
       } else if (gk.holdT > holdTime * 0.5) {
@@ -1950,8 +2041,14 @@ export class GameEngine {
     // Track the ball's x, but NOT instantly — a smart placement into the corner
     // should be able to beat the keeper. The lerp lags the ball so a well-placed
     // shot leaves a real gap; a tame shot down the middle still gets covered.
-    const tx = clamp(this.ball.x, GX0 + 6, GX1 - 6);
-    gk.x += (tx - gk.x) * 0.045 * Math.max(1, this.PACE * 1.6);
+    // Keeper positioning: stand on the line between the ball and the middle of
+    // the goal (narrowing the angle), shading further across the closer the ball
+    // gets. Adjusts briskly so a quick cut inside doesn't leave an open goal.
+    const goalLineY = gk.side === "us" ? BOT : TOP;
+    const dy = Math.max(20, Math.abs(this.ball.y - goalLineY));
+    const shade = clamp(45 / dy, 0.12, 0.8);
+    const tx = clamp(W / 2 + (this.ball.x - W / 2) * shade, GX0 + 10, GX1 - 10);
+    gk.x += (tx - gk.x) * 0.12 * Math.max(1, this.PACE * 1.6);
     gk.x = clamp(gk.x, GX0, GX1);
 
     // A shot crossing the keeper's line is a save CHANCE, not an automatic save.
@@ -2171,7 +2268,7 @@ export class GameEngine {
       if (p === carrier || p.gk) continue;
       const av = this.availability(p, carrier);
       // Signed forward progress, -1..1 (clamped): >0 toward goal, <0 backward.
-      const forward = clamp(((carrier.y - p.y) * dir) / (H * 0.5), -1, 1);
+      const forward = clamp(((p.y - carrier.y) * dir) / (H * 0.5), -1, 1);
       // Forward reward is a 0..1 ramp; a backward pass earns a real penalty so a
       // safe forward ball wins. The penalty grows when we're under pressure.
       const fwdReward = forward > 0 ? forward : forward * (pressed ? 1.4 : 0.8);
@@ -2228,7 +2325,7 @@ export class GameEngine {
       const ty = carrier.y + (goalY - carrier.y) * 0.35; // a point ~35% toward goal
       for (const e of enemies) {
         if (e.gk || (e.frozenTimer && e.frozenTimer > 0)) continue;
-        const eDepth = (carrier.y - e.y) * dir; // >0 = enemy is goal-ward of carrier
+        const eDepth = (e.y - carrier.y) * dir; // >0 = enemy is goal-ward of carrier
         if (eDepth <= 0) continue;               // ignore defenders behind the carrier
         if (segDist(e.x, e.y, carrier.x, carrier.y, tx, ty) < 38) return false;
       }
@@ -2250,6 +2347,18 @@ export class GameEngine {
       const gk = carrier.side === "us" ? this.gkUs : this.gkThem;
       if (gk && this.nearestEnemy(gk.x, gk.y, carrier.side) > 50) {
         this.doPass(carrier, gk);
+        return;
+      }
+    }
+
+    // ===== SEE THE OPEN MAN =====
+    // Before deciding to keep dribbling, look for a teammate further forward who
+    // is open (no defender near them) with a clear passing lane — and especially
+    // anyone left completely unmarked. A good forward pass beats a dribble.
+    if (action !== "dribble") {
+      const attackPass = this.findAttackingPass(carrier);
+      if (attackPass) {
+        this.launchBall(carrier, attackPass.tx, attackPass.ty, "pass", attackPass.p);
         return;
       }
     }
@@ -2289,6 +2398,48 @@ export class GameEngine {
     let pick = best.p;
     if (opts.length > 1 && Math.random() < 0.2 && opts[1].s > 0.4) pick = opts[1].p;
     this.doPass(carrier, pick);
+  }
+
+  // The best forward pass to an OPEN teammate, or null. Unmarked players get
+  // priority; passes are led a little into the space in front of the runner.
+  private findAttackingPass(carrier: Player): { p: Player; tx: number; ty: number } | null {
+    const team = carrier.side === "us" ? this.teamUs : this.teamThem;
+    const enemies = this.enemiesOf(carrier.side).filter((e) => !(e.frozenTimer && e.frozenTimer > 0));
+    const dir = this.attackDir(carrier.side);
+    const goalY = carrier.side === "us" ? TOP : BOT;
+    let best: { p: Player; tx: number; ty: number; score: number } | null = null;
+    for (const p of team) {
+      if (p === carrier || p.gk || (p.frozenTimer && p.frozenTimer > 0)) continue;
+      const forward = (p.y - carrier.y) * dir;           // px of progress toward goal
+      let marked = 1e9;
+      for (const e of enemies) marked = Math.min(marked, dist(e, p));
+      const unmarked = marked > 85;
+      // Forward passes to open players; or a switch to someone totally unmarked.
+      if (!(forward > 30 || (unmarked && forward > -15))) continue;
+      if (marked < 48) continue;
+      const d = dist(p, carrier);
+      if (d < 60 || d > 380) continue;
+      // Lead the pass into space ahead of the receiver if it's free there.
+      const lead = marked > 70 ? 26 : 12;
+      const tx = clamp(p.x, L + 12, R - 12);
+      const ty = clamp(p.y + dir * lead, TOP + 14, BOT - 14);
+      let laneGap = 1e9;
+      for (const e of enemies) laneGap = Math.min(laneGap, segDist(e.x, e.y, carrier.x, carrier.y, tx, ty));
+      if (laneGap < 24) continue;
+      const closerToGoal = clamp((Math.abs(carrier.y - goalY) - Math.abs(p.y - goalY)) / (H * 0.4), -0.5, 1);
+      const score = closerToGoal * 1.1 + clamp(marked / 120, 0, 1) * 0.7 + (unmarked ? 0.45 : 0) + clamp(laneGap / 60, 0, 1) * 0.3 - d / 1200;
+      if (!best || score > best.score) best = { p, tx, ty, score };
+    }
+    if (!best) return null;
+    // Always play it to an unmarked man; otherwise only if it's a clearly good ball.
+    let markedBest = 1e9;
+    for (const e of enemies) markedBest = Math.min(markedBest, dist(e, best.p));
+    if (markedBest > 85 || best.score > 0.9) return best;
+    // A decent-but-not-obvious option: weigh it up a few times a second, not
+    // every frame (so it isn't an instant reflex).
+    if (this.attackScanTimer > 0) { this.attackScanTimer--; return null; }
+    this.attackScanTimer = Math.round(12 / Math.max(0.5, this.PACE));
+    return Math.random() < 0.5 ? best : null;
   }
 
   private aiShoot(carrier: Player) {
@@ -2372,7 +2523,10 @@ export class GameEngine {
     // and with pressure on the passer. A wayward pass doesn't reach its man — it
     // runs loose, and if a Red gets there first it's a turnover.
     this.ball.aimX = tx; this.ball.aimY = ty; // where the pass was MEANT to go
-    if (kind === "pass" && toPlayer && !from.gk) {
+    // Passes are never aimed past the goal lines (a pass can't roll into the net).
+    if (kind === "pass") ty = clamp(ty, TOP + 10, BOT - 10);
+    // A pass back to your own keeper is played safely — no accuracy error.
+    if (kind === "pass" && toPlayer && !from.gk && !toPlayer.gk) {
       const len = Math.hypot(tx - from.x, ty - from.y);
       const near = this.nearestEnemy(from.x, from.y, from.side);
       const pressure = near < 30 ? 2.3 : near < 55 ? 1.5 : 1;
@@ -2388,6 +2542,7 @@ export class GameEngine {
         tx += Math.cos(ang) * run;
         ty += Math.sin(ang) * run;
       }
+      ty = clamp(ty, TOP + 10, BOT - 10);
     }
     this.ball.gkReact = 0;
     this.ball.gkBeaten = false;
@@ -2412,7 +2567,7 @@ export class GameEngine {
       }
       // Receiving: the target only gets it if they actually reached the ball.
       // You get a slightly bigger window (you're steering with a thumb).
-      const reach = toPlayer === this.you ? 34 : 24;
+      const reach = toPlayer === this.you ? 34 : toPlayer?.gk ? 60 : 24;
       if (toPlayer && dist(toPlayer, this.ball) > reach) {
         this.looseBall(from);
         return;
@@ -2577,6 +2732,17 @@ export class GameEngine {
         (this.ball.y <= TOP + 2 || this.ball.y >= BOT - 2)) {
       this.keeperSave(this.ball.y <= TOP + 2 ? this.gkThem : this.gkUs);
       if (!this.ball.flying) return true; // saved
+    }
+    // Only SHOTS score. A pass/cross/clearance that reaches the goal mouth is
+    // gathered by that goal's keeper (a back-pass is simply the keeper's ball).
+    if (this.ball.kind !== "shot" && this.ball.x > GX0 - 6 && this.ball.x < GX1 + 6 &&
+        (this.ball.y <= TOP + 2 || this.ball.y >= BOT - 2)) {
+      const gk = this.ball.y <= TOP + 2 ? this.gkThem : this.gkUs;
+      this.ball.flying = false;
+      this.ball.onArrive = null;
+      gk.x = clamp(this.ball.x, GX0, GX1);
+      this.giveBall(gk);
+      return true;
     }
     if (this.ball.y <= TOP + 2 && this.ball.x > GX0 && this.ball.x < GX1) {
       this.scoreGoal("us");
