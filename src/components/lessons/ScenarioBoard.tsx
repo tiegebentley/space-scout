@@ -327,7 +327,16 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           // touch-pan-y lets a vertical swipe on the field scroll the page,
           // while object drags still work (their pointerdown calls preventDefault).
-          className="w-full max-w-[440px] max-h-[68vh] mx-auto block rounded-2xl border-2 border-[rgba(20,60,35,.15)] touch-pan-y select-none shadow-sm"
+          // While there's something to drag (move / arrow questions, before the
+          // answer is revealed) the board must NOT scroll the page: phones ignore
+          // touch-action on individual SVG shapes, so once the page becomes
+          // scrollable (e.g. the hint box appears after a wrong answer) every drag
+          // turned into a scroll and players felt stuck. The board is capped at
+          // 68vh, so there's always room above/below it to scroll the page.
+          className={clsx(
+            "w-full max-w-[440px] max-h-[68vh] mx-auto block rounded-2xl border-2 border-[rgba(20,60,35,.15)] select-none shadow-sm",
+            (mode === "move" || mode === "arrow") && !reveal ? "touch-none" : "touch-pan-y"
+          )}
         >
         {/* Striped grass (horizontal bands up the pitch) */}
         {Array.from({ length: 10 }).map((_, i) => (
