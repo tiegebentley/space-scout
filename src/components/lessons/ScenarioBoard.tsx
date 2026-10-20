@@ -35,6 +35,21 @@ interface Props {
   onResult: (r: ScenarioResult) => void;
 }
 
+// The board as the player first sees it. In an ARROW question the answer arrow
+// is the player's own draggable arrow — but authors often save it already
+// pointing at the right spot, which gives the answer away. So it starts as a
+// short neutral stub at its tail, pointing up the pitch (the attack direction);
+// the player drags the tip out themselves. The correct target only shows on
+// reveal.
+function initialObjects(scenario: Scenario): BoardObject[] {
+  const arrowId = scenario.answer.mode === "arrow" ? scenario.answer.objectId : null;
+  const forward = scenario.attackDir === "left" ? -1 : 1;
+  return scenario.board.objects.map((o) => {
+    if (o.id !== arrowId || o.type !== "arrow" || o.x1 == null || o.y1 == null) return { ...o };
+    return { ...o, x2: o.x1 + forward * 42, y2: o.y1 };
+  });
+}
+
 export function ScenarioBoard({ scenario, onResult }: Props) {
   const mode = scenario.answer.mode;
   const draggableIds = useMemo(
@@ -61,7 +76,7 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
     return arr;
   }, [scenario]);
 
-  const [objects, setObjects] = useState<BoardObject[]>(() => scenario.board.objects.map((o) => ({ ...o })));
+  const [objects, setObjects] = useState<BoardObject[]>(() => initialObjects(scenario));
   const [correct, setCorrect] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [choiceIdx, setChoiceIdx] = useState<number | null>(null);
@@ -72,7 +87,7 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
 
   // Reset everything when the scenario changes.
   useEffect(() => {
-    setObjects(scenario.board.objects.map((o) => ({ ...o })));
+    setObjects(initialObjects(scenario));
     setCorrect(false);
     setReveal(false);
     setChoiceIdx(null);
@@ -162,17 +177,42 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
   // ---- pointer handlers ----
   // Drag via window-level listeners attached on pointerdown — robust across SVG
   // token re-renders (setPointerCapture on re-rendered SVG nodes is unreliable).
-  const onPointerDownObj = (id: string, end?: "tip" | "tail") => (e: React.PointerEvent) => {
+  const onPointerDownObj = (idIn: string, endIn?: "tip" | "tail") => (e: React.PointerEvent) => {
+    let id = idIn, end = endIn;
     if (reveal) return;
     const isDraggable = draggableIds.includes(id) || (mode === "arrow" && id === arrowId);
     if (!isDraggable) return;
     e.preventDefault();
     e.stopPropagation();
+    // Grab whichever draggable piece is NEAREST the finger (overlapping pieces
+    // are common — e.g. players stacked before you spread them out).
+    const svg = svgRef.current;
+    if (svg) {
+      const r = svg.getBoundingClientRect();
+      const vx = ((e.clientX - r.left) / r.width) * VIEW_W, vy = ((e.clientY - r.top) / r.height) * VIEW_H;
+      let bestD = 1e9;
+      for (const o of objects) {
+        let pt: { x: number; y: number; end?: "tip" } | null = null;
+        if (draggableIds.includes(o.id)) pt = { x: o.x, y: o.y };
+        else if (mode === "arrow" && o.id === arrowId && o.type === "arrow") pt = { x: o.x2 ?? o.x, y: o.y2 ?? o.y, end: "tip" };
+        if (!pt) continue;
+        const sc = labToScreen(pt.x, pt.y);
+        const d = Math.hypot(sc.sx - vx, sc.sy - vy);
+        if (d < bestD) { bestD = d; id = o.id; end = pt.end; }
+      }
+    }
     drag.current = { id, end };
+    // Keep the grab offset so the piece moves with the finger (no jump).
+    const grabbed = objects.find((o) => o.id === id);
+    const f0 = toLab(e.clientX, e.clientY);
+    const gx = grabbed ? (end === "tip" ? grabbed.x2 ?? grabbed.x : grabbed.x) : f0.x;
+    const gy = grabbed ? (end === "tip" ? grabbed.y2 ?? grabbed.y : grabbed.y) : f0.y;
+    const offX = gx - f0.x, offY = gy - f0.y;
 
     const move = (ev: PointerEvent) => {
       if (!drag.current) return;
-      const { x, y } = toLab(ev.clientX, ev.clientY);
+      const f = toLab(ev.clientX, ev.clientY);
+      const x = clamp(f.x + offX, R, PW - R), y = clamp(f.y + offY, R, LAB_PITCH.h - R);
       const { id: did, end: dend } = drag.current;
       setObjects((prev) =>
         prev.map((o) => {
@@ -248,8 +288,11 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
         />
         {/* draggable tip handle (arrow mode) */}
         {mode === "arrow" && o.id === arrowId && !reveal && (
-          <circle cx={b.sx} cy={b.sy} r={14} fill="rgba(255,209,102,.5)" stroke="#FFD166" strokeWidth={3}
-            style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onPointerDownObj(o.id, "tip")} />
+          <>
+            <circle cx={b.sx} cy={b.sy} r={16} fill="rgba(255,209,102,.5)" stroke="#FFD166" strokeWidth={3} pointerEvents="none" />
+            <circle cx={b.sx} cy={b.sy} r={38} fill="#000" fillOpacity={0.001}
+              style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onPointerDownObj(o.id, "tip")} />
+          </>
         )}
       </g>
     );
@@ -353,6 +396,7 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
               // the player; info-tap and static players let the swipe scroll the page.
               style={{ cursor: interactive ? (isInfo ? "pointer" : "grab") : "default", touchAction: isDraggable ? "none" : undefined }}
             >
+              {isDraggable && <circle cx={s.sx} cy={s.sy} r={38} fill="#000" fillOpacity={0.001} />}
               <circle cx={s.sx} cy={s.sy} r={R} fill={isHome ? HOME : AWAY} stroke={ring} strokeWidth={interactive || graded ? 5 : 2} />
               <text x={s.sx} y={s.sy + 6} textAnchor="middle" fontSize={20} fontWeight={800} fill="#fff" style={{ fontFamily: "Fredoka, sans-serif", pointerEvents: "none" }}>
                 {o.label}

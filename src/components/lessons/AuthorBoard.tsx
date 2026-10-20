@@ -91,6 +91,10 @@ export function AuthorBoard({
 
   // Drag/resize an existing zone (move = whole box; corner = resize).
   const onZonePointerDown = (id: string, z: Zone, handle: "move" | "se") => (e: React.PointerEvent) => {
+    if (handle === "move" && tool.kind !== "drawZone") {
+      const pick = pickNearest(e.clientX, e.clientY, 44);
+      if (pick) { startDrag(pick, e); return; }
+    }
     e.stopPropagation();
     e.preventDefault();
     setEditZoneId(id);
@@ -114,17 +118,59 @@ export function AuthorBoard({
     window.addEventListener("pointerup", up);
   };
 
-  // Drag a token via window listeners (robust across re-renders).
-  const onObjPointerDown = (id: string, end?: "tip" | "tail") => (e: React.PointerEvent) => {
-    if (tool.kind === "drawZone") return; // zone tool ignores tokens
+  // ── Touch-friendly picking ────────────────────────────────────────────────
+  // Every draggable point on the board (player/ball centres, arrow tail + tip),
+  // in screen (viewBox) units.
+  const grabPoints = useCallback((list: BoardObject[]) => {
+    const pts: { id: string; end?: "tip" | "tail"; sx: number; sy: number; lx: number; ly: number }[] = [];
+    for (const o of list) {
+      if (o.type === "arrow") {
+        const tx = o.x1 ?? o.x, ty = o.y1 ?? o.y, hx = o.x2 ?? o.x, hy = o.y2 ?? o.y;
+        const a = labToScreen(tx, ty), b = labToScreen(hx, hy);
+        pts.push({ id: o.id, end: "tail", sx: a.sx, sy: a.sy, lx: tx, ly: ty });
+        pts.push({ id: o.id, end: "tip", sx: b.sx, sy: b.sy, lx: hx, ly: hy });
+      } else {
+        const p = labToScreen(o.x, o.y);
+        pts.push({ id: o.id, sx: p.sx, sy: p.sy, lx: o.x, ly: o.y });
+      }
+    }
+    return pts;
+  }, []);
+
+  // The piece NEAREST the finger (within a finger-sized radius). The piece that's
+  // already selected wins ties, so once you've picked something, nearby pieces
+  // don't steal the drag.
+  const pickNearest = useCallback((clientX: number, clientY: number, maxR = 64) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const r = svg.getBoundingClientRect();
+    const vx = ((clientX - r.left) / r.width) * VIEW_W;
+    const vy = ((clientY - r.top) / r.height) * VIEW_H;
+    let best: ReturnType<typeof grabPoints>[number] | null = null;
+    let bestD = maxR;
+    for (const p of grabPoints(objectsRef.current)) {
+      let d = Math.hypot(p.sx - vx, p.sy - vy);
+      if (p.id === selectedId) d -= 14;
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    return best;
+  }, [grabPoints, selectedId]);
+
+  // Start dragging a picked piece. The grab offset is kept, so the piece moves
+  // WITH your finger instead of jumping its centre under it.
+  const startDrag = (pick: NonNullable<ReturnType<typeof pickNearest>>, e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    onSelect(id);
+    onSelect(pick.id);
+    setEditZoneId(null);
     try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch {}
-    drag.current = { id, end };
+    const f0 = toLab(e.clientX, e.clientY);
+    const offX = pick.lx - f0.x, offY = pick.ly - f0.y;
+    drag.current = { id: pick.id, end: pick.end };
     const move = (ev: PointerEvent) => {
       if (!drag.current) return;
-      const { x, y } = toLab(ev.clientX, ev.clientY);
+      const f = toLab(ev.clientX, ev.clientY);
+      const x = clamp(f.x + offX, 0, PW), y = clamp(f.y + offY, 0, PH);
       const { id: did, end: dend } = drag.current;
       setObjectsRef.current(objectsRef.current.map((o) => {
         if (o.id !== did) return o;
@@ -135,6 +181,13 @@ export function AuthorBoard({
     const up = () => { drag.current = null; window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+  };
+
+  // Any tap on a piece's (enlarged) hit area: drag whichever piece is nearest.
+  const onHitPointerDown = (e: React.PointerEvent) => {
+    if (tool.kind === "drawZone") return; // let the board draw the zone
+    const pick = pickNearest(e.clientX, e.clientY);
+    if (pick) startDrag(pick, e);
   };
 
   // An editable zone: filled rect (drag to move) + SE resize handle + delete ×.
@@ -216,21 +269,21 @@ export function AuthorBoard({
           return (
             <g key={o.id}>
               <line x1={a.sx} y1={a.sy} x2={b.sx} y2={b.sy} stroke={o.color || HOME} strokeWidth={5} strokeLinecap="round" strokeDasharray={o.style === "run" ? "10 8" : undefined} />
-              <circle cx={a.sx} cy={a.sy} r={12} fill="rgba(46,111,224,.4)" stroke={o.color || HOME} strokeWidth={2} style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onObjPointerDown(o.id, "tail")} />
-              <circle cx={b.sx} cy={b.sy} r={14} fill="rgba(255,209,102,.5)" stroke="#FFD166" strokeWidth={3} style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onObjPointerDown(o.id, "tip")} />
+              <circle cx={a.sx} cy={a.sy} r={14} fill="rgba(46,111,224,.4)" stroke={selectedId === o.id ? "#fff" : (o.color || HOME)} strokeWidth={selectedId === o.id ? 4 : 2} pointerEvents="none" />
+              <circle cx={b.sx} cy={b.sy} r={16} fill="rgba(255,209,102,.5)" stroke={selectedId === o.id ? "#fff" : "#FFD166"} strokeWidth={selectedId === o.id ? 4 : 3} pointerEvents="none" />
               {isAns && <text x={(a.sx + b.sx) / 2} y={(a.sy + b.sy) / 2 - 10} textAnchor="middle" fontSize={14} fontWeight={800} fill="#FFD166">answer</text>}
             </g>
           );
         }
         const s = labToScreen(o.x, o.y);
         if (o.type === "ball") {
-          return <circle key={o.id} cx={s.sx} cy={s.sy} r={12} fill="#fff" stroke={selectedId === o.id ? "#FFD166" : "#222"} strokeWidth={selectedId === o.id ? 4 : 2} style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onObjPointerDown(o.id)} />;
+          return <circle key={o.id} cx={s.sx} cy={s.sy} r={13} fill="#fff" stroke={selectedId === o.id ? "#FFD166" : "#222"} strokeWidth={selectedId === o.id ? 5 : 2} pointerEvents="none" />;
         }
         const isHome = o.team === "home";
         const isAnswer = answerIds.includes(o.id);
         const sel = selectedId === o.id;
         return (
-          <g key={o.id} style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onObjPointerDown(o.id)}>
+          <g key={o.id} pointerEvents="none">
             <circle cx={s.sx} cy={s.sy} r={R} fill={isHome ? HOME : AWAY}
               stroke={sel ? "#fff" : isAnswer ? "#FFD166" : "rgba(255,255,255,.85)"} strokeWidth={sel ? 6 : isAnswer ? 5 : 2} />
             <text x={s.sx} y={s.sy + 6} textAnchor="middle" fontSize={20} fontWeight={800} fill="#fff" style={{ fontFamily: "Fredoka, sans-serif", pointerEvents: "none" }}>
@@ -239,6 +292,15 @@ export function AuthorBoard({
           </g>
         );
       })}
+
+      {/* Finger-sized hit areas (invisible) — a tap anywhere near a piece grabs
+          the piece NEAREST the finger, so overlapping pieces are easy to isolate. */}
+      {tool.kind !== "drawZone" && grabPoints(objects).map((p) => (
+        <circle key={`hit-${p.id}-${p.end ?? "c"}`} cx={p.sx} cy={p.sy} r={40}
+          fill="#000" fillOpacity={0.001}
+          style={{ cursor: "grab", touchAction: "none" }}
+          onPointerDown={onHitPointerDown} />
+      ))}
     </svg>
   );
 }
