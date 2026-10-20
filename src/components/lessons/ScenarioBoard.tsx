@@ -46,7 +46,7 @@ function initialObjects(scenario: Scenario): BoardObject[] {
   const forward = scenario.attackDir === "left" ? -1 : 1;
   return scenario.board.objects.map((o) => {
     if (o.id !== arrowId || o.type !== "arrow" || o.x1 == null || o.y1 == null) return { ...o };
-    return { ...o, x2: o.x1 + forward * 42, y2: o.y1 };
+    return { ...o, x2: o.x1 + forward * 75, y2: o.y1 };
   });
 }
 
@@ -207,10 +207,20 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
     const f0 = toLab(e.clientX, e.clientY);
     const gx = grabbed ? (end === "tip" ? grabbed.x2 ?? grabbed.x : grabbed.x) : f0.x;
     const gy = grabbed ? (end === "tip" ? grabbed.y2 ?? grabbed.y : grabbed.y) : f0.y;
-    const offX = gx - f0.x, offY = gy - f0.y;
+    // Players keep the grab offset (move WITH the finger); the arrow tip is
+    // DRAWN — it follows the finger exactly, wherever you started.
+    const offX = end === "tip" ? 0 : gx - f0.x, offY = end === "tip" ? 0 : gy - f0.y;
+    // Nothing moves until the finger has actually travelled a few pixels, so a
+    // tap (or the start of a scroll) never nudges the arrow or a player.
+    const startX = e.clientX, startY = e.clientY;
+    let started = false;
 
     const move = (ev: PointerEvent) => {
       if (!drag.current) return;
+      if (!started) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 8) return;
+        started = true;
+      }
       const f = toLab(ev.clientX, ev.clientY);
       const x = clamp(f.x + offX, R, PW - R), y = clamp(f.y + offY, R, LAB_PITCH.h - R);
       const { id: did, end: dend } = drag.current;
@@ -290,8 +300,7 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
         {mode === "arrow" && o.id === arrowId && !reveal && (
           <>
             <circle cx={b.sx} cy={b.sy} r={16} fill="rgba(255,209,102,.5)" stroke="#FFD166" strokeWidth={3} pointerEvents="none" />
-            <circle cx={b.sx} cy={b.sy} r={38} fill="#000" fillOpacity={0.001}
-              style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onPointerDownObj(o.id, "tip")} />
+
           </>
         )}
       </g>
@@ -404,6 +413,22 @@ export function ScenarioBoard({ scenario, onResult }: Props) {
             </g>
           );
         })}
+        {/* Arrow drawing hit areas — on TOP of everything so a touch on your player
+            or the tip handle always starts the draw (and nothing else reacts). */}
+        {mode === "arrow" && !reveal && (() => {
+          const o = objects.find((x) => x.id === arrowId && x.type === "arrow");
+          if (!o) return null;
+          const a = labToScreen(o.x1 ?? o.x, o.y1 ?? o.y);
+          const b = labToScreen(o.x2 ?? o.x, o.y2 ?? o.y);
+          return (
+            <>
+              <circle cx={a.sx} cy={a.sy} r={26} fill="#000" fillOpacity={0.001}
+                style={{ cursor: "crosshair", touchAction: "none" }} onPointerDown={onPointerDownObj(o.id, "tip")} />
+              <circle cx={b.sx} cy={b.sy} r={32} fill="#000" fillOpacity={0.001}
+                style={{ cursor: "grab", touchAction: "none" }} onPointerDown={onPointerDownObj(o.id, "tip")} />
+            </>
+          );
+        })()}
         </svg>
       </div>
 
