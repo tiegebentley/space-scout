@@ -148,6 +148,16 @@ export class GameEngine {
 
   private emit(event: EngineEvent) { this.eventQueue.push(event); }
 
+  // FrameDriver hooks: what to interpolate / smooth-turn when rendering.
+  interpEntities(): Array<{ x: number; y: number }> {
+    if (!this.you) return [];
+    return [...this.teamUs, ...this.teamThem, this.ball].filter(Boolean);
+  }
+  facingEntities(): Player[] {
+    if (!this.you) return [];
+    return [...this.teamUs, ...this.teamThem];
+  }
+
   flushEvents(): EngineEvent[] {
     const events = this.eventQueue;
     this.eventQueue = [];

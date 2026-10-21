@@ -6,8 +6,14 @@
 // simulation always ticks at 60Hz (accumulator), and each rendered frame draws
 // positions interpolated between the last two simulation states, so motion is
 // smooth at any display refresh rate.
-import type { GameEngine } from "./GameEngine";
-import type { Player } from "@/types/game";
+
+/** Anything the driver can step + interpolate (GameEngine, SmallSidedEngine). */
+export interface Simulation {
+  update(dt: number): void;
+  interpEntities(): Ent[];
+  facingEntities(): Facer[];
+}
+type Facer = { face: number };
 
 export const STEP_MS = 1000 / 60;
 const MAX_STEPS = 5;          // spiral-of-death guard (tab was backgrounded, etc.)
@@ -19,17 +25,12 @@ export class FrameDriver {
   private last = 0;
   private acc = 0;
   private prev = new Map<Ent, { x: number; y: number }>();
-  private faces = new WeakMap<Player, number>();
+  private faces = new WeakMap<Facer, number>();
 
   reset() { this.last = 0; this.acc = 0; this.prev.clear(); }
 
-  private entities(engine: GameEngine): Ent[] {
-    if (!engine.you) return [];
-    return [...engine.teamUs, ...engine.teamThem, engine.ball].filter(Boolean) as Ent[];
-  }
-
   /** Advance the simulation for this animation frame, then render interpolated. */
-  frame(t: number, engine: GameEngine, afterStep: () => void, render: () => void) {
+  frame(t: number, engine: Simulation, afterStep: () => void, render: () => void) {
     if (!this.last) this.last = t;
     const dt = Math.min(250, t - this.last);
     this.last = t;
@@ -37,7 +38,7 @@ export class FrameDriver {
     let steps = 0;
     while (this.acc >= STEP_MS && steps < MAX_STEPS) {
       this.prev.clear();
-      for (const e of this.entities(engine)) this.prev.set(e, { x: e.x, y: e.y });
+      for (const e of engine.interpEntities()) this.prev.set(e, { x: e.x, y: e.y });
       engine.update(STEP_MS);
       afterStep();
       this.acc -= STEP_MS;
@@ -55,9 +56,9 @@ export class FrameDriver {
       e.x = p.x + dx * alpha;
       e.y = p.y + dy * alpha;
     }
-    const savedFace: Array<[Player, number]> = [];
+    const savedFace: Array<[Facer, number]> = [];
     const turn = Math.min(1, dt / STEP_MS) * 0.3;
-    for (const p of [...(engine.you ? engine.teamUs : []), ...(engine.you ? engine.teamThem : [])]) {
+    for (const p of engine.facingEntities()) {
       if (p.face == null) continue;
       const shown = this.faces.get(p) ?? p.face;
       const d = Math.atan2(Math.sin(p.face - shown), Math.cos(p.face - shown));

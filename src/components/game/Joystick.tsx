@@ -1,9 +1,9 @@
 "use client";
 import { useRef, useCallback, type RefObject } from "react";
-import type { GameEngine } from "@/engine/GameEngine";
 
+// Works with any engine that exposes a joystick vector (match, drills, small-sided games).
 interface JoystickProps {
-  engineRef: RefObject<GameEngine | null>;
+  engineRef: RefObject<{ joyVec: { x: number; y: number; active: boolean } } | null>;
   size?: number;
   className?: string;
 }

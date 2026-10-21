@@ -110,6 +110,13 @@ export default function HomePage() {
             </div>
           </Link>
 
+          <Link href="/games" className="block">
+            <div className="bg-gradient-to-b from-[#ffd84d] to-[#F0B429] text-[#3a2e00] rounded-2xl p-5 shadow-[0_5px_0_#a87a00,0_8px_16px_rgba(0,0,0,.2)] active:translate-y-[3px] active:shadow-[0_2px_0_#a87a00] transition-transform cursor-pointer">
+              <h2 className="font-[Fredoka] font-semibold text-xl">Rondos &amp; Small-Sided Games</h2>
+              <p className="text-sm font-bold opacity-80 mt-0.5">3v1, 4v2, neutrals, bumpers — or build your own</p>
+            </div>
+          </Link>
+
           {/* Tactical Drills — coming soon, greyed out & not clickable */}
           <div className="block" aria-disabled>
             <div className="relative bg-white text-[#16241c] rounded-2xl p-5 shadow-lg border border-[rgba(20,60,35,.1)] opacity-55 cursor-not-allowed select-none">
