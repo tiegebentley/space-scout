@@ -115,6 +115,7 @@ export class GameEngine {
   // the Shoot button lights up the moment you dribble into range.
   private lastActionSig = "";
   private attackScanTimer = 0;
+  private motionState: GameState | null = null;
 
   showBuildoutLines = false;
   showZoneEditor = false;
@@ -291,15 +292,67 @@ export class GameEngine {
     return true;
   }
 
-  // Step a player toward (tx,ty), capped at speed `sp`; updates facing.
-  private easeToward(p: Player, tx: number, ty: number, sp: number): void {
-    const dx = tx - p.x, dy = ty - p.y;
-    const d = Math.hypot(dx, dy);
-    if (d > 1) {
-      p.x += (dx / d) * Math.min(d, sp);
-      p.y += (dy / d) * Math.min(d, sp);
-      p.face = Math.atan2(dy, dx);
+  // Move a player toward (tx,ty) at up to `sp` (smooth steering).
+  private easeToward(p: Player, tx: number, ty: number, sp: number, resp = 1.5): void {
+    this.steer(p, tx, ty, sp, resp);
+  }
+
+  // Velocity-based steering — the core of smooth AI movement. Players
+  // ACCELERATE up to speed, hold a smooth line, and EASE into their spot,
+  // instead of snapping speed/direction every frame (which read as robotic
+  // twitching, and as "drifting" when a target crept along with the ball).
+  // `resp` scales reaction: >1 for pressers / receivers, 1 for shape-holders.
+  private steer(p: Player, tx: number, ty: number, maxSp: number, resp = 1): void {
+    // Low-pass the target: tactical targets hop a few px frame-to-frame (ball
+    // tracking, trigger thresholds, sampled support spots). A genuinely new job
+    // (big jump) is taken immediately — the velocity limit still smooths the turn.
+    if (p.tgx === undefined || p.tgy === undefined || Math.hypot(tx - p.tgx, ty - p.tgy) > 140) {
+      p.tgx = tx; p.tgy = ty;
+    } else {
+      const k = Math.min(1, 0.16 * resp);
+      p.tgx += (tx - p.tgx) * k;
+      p.tgy += (ty - p.tgy) * k;
     }
+    const dx = p.tgx - p.x, dy = p.tgy - p.y, d = Math.hypot(dx, dy);
+    // Arrive: full speed until ~28px out, then slow proportionally — no
+    // overshoot-and-correct jitter around the spot.
+    let want = d < 0.8 ? 0 : maxSp * Math.min(1, d / 28);
+    // Shape-holders (resp ≤ 1.2) settle once they arrive and stand until their
+    // spot has moved ~14px — otherwise a target that tracks the ball keeps them
+    // creeping forever, which reads as aimless drifting.
+    if (resp <= 1.2) {
+      const spd0 = Math.hypot(p.vx ?? 0, p.vy ?? 0);
+      if (p.settled) { if (d > 14) p.settled = false; }
+      else if (d < 3 && spd0 < 0.06) p.settled = true;
+      if (p.settled) want = 0;
+    } else p.settled = false;
+    const wx = d > 0 ? (dx / d) * want : 0, wy = d > 0 ? (dy / d) * want : 0;
+    let vx = p.vx ?? 0, vy = p.vy ?? 0;
+    const ax = wx - vx, ay = wy - vy, al = Math.hypot(ax, ay);
+    const acc = Math.max(0.012, maxSp * 0.09 * resp); // ~0.18s to top speed at resp 1
+    if (al > acc) { vx += (ax / al) * acc; vy += (ay / al) * acc; } else { vx = wx; vy = wy; }
+    p.vx = vx; p.vy = vy;
+    p.x += vx; p.y += vy;
+  }
+
+  // Dribble step for an AI carrier: turn-rate-limited heading + smoothed speed.
+  private carryStep(m: Player, wantAng: number, wantSp: number, maxTurn: number): void {
+    const cur = m.face ?? wantAng;
+    const dA = clamp(Math.atan2(Math.sin(wantAng - cur), Math.cos(wantAng - cur)), -maxTurn, maxTurn);
+    const head = cur + dA;
+    const s0 = m.cspd ?? Math.hypot(m.vx ?? 0, m.vy ?? 0);
+    const sp = s0 + (wantSp - s0) * 0.12;
+    m.cspd = sp;
+    m.vx = Math.cos(head) * sp; m.vy = Math.sin(head) * sp;
+    m.x += m.vx; m.y += m.vy;
+    m.face = head;
+  }
+
+  // Zero a player's motion state (after teleports: restarts, kickoffs, freezes).
+  private stopMotion(p: Player): void {
+    p.vx = 0; p.vy = 0; p.cspd = 0;
+    p.tgx = undefined; p.tgy = undefined;
+    p.supA = undefined; p.dodgeSide = undefined; p.settled = false;
   }
 
   // The X (width) the ball-carrier should aim for. With no active zone box, that's
@@ -652,6 +705,13 @@ export class GameEngine {
       }
     }
 
+    // Any switch between live and dead ball repositions players (restarts,
+    // kickoffs) — drop stale momentum so nobody slides off their set spot.
+    if (this.gstate !== this.motionState) {
+      this.motionState = this.gstate;
+      for (const p of [...this.teamUs, ...this.teamThem]) this.stopMotion(p);
+    }
+
     this.timeLeft -= dt;
     if (this.timeLeft < 0) this.timeLeft = 0;
     if (this.timeLeft <= 0) this.endMatch();
@@ -669,7 +729,7 @@ export class GameEngine {
     if (!b.flying || b.kind !== "pass" || !r || r === this.you || r.gk) return;
     if (r.frozenTimer && r.frozenTimer > 0) return;
     // Run to where the pass was MEANT to go — a wayward ball can beat them.
-    this.easeToward(r, b.aimX ?? b.tx, b.aimY ?? b.ty, 2.3 * this.PACE);
+    this.easeToward(r, b.aimX ?? b.tx, b.aimY ?? b.ty, 2.3 * this.PACE, 2.4);
   }
 
   private syncActionState() {
@@ -1338,14 +1398,23 @@ export class GameEngine {
       dy = this.joyVec.y;
     }
 
+    // A short acceleration/brake ramp (~0.1s) so your player has weight
+    // without feeling laggy. Facing still snaps to your input (passes aim there).
+    let wx = 0, wy = 0;
     if (dx || dy) {
       const m = Math.hypot(dx, dy);
       if (m > 0) {
-        this.you.x = clamp(this.you.x + (dx / m) * sp, 8, W - 8);
-        this.you.y = clamp(this.you.y + (dy / m) * sp, 8, H - 8);
+        const mag = this.joyVec.active ? Math.min(1, m) : 1; // analog joystick
+        wx = (dx / m) * sp * mag; wy = (dy / m) * sp * mag;
         this.you.face = Math.atan2(dy, dx);
       }
     }
+    const k = wx || wy ? 0.35 : 0.45;
+    this.you.vx = (this.you.vx ?? 0) + (wx - (this.you.vx ?? 0)) * k;
+    this.you.vy = (this.you.vy ?? 0) + (wy - (this.you.vy ?? 0)) * k;
+    if (Math.hypot(this.you.vx, this.you.vy) < 0.01) { this.you.vx = 0; this.you.vy = 0; }
+    this.you.x = clamp(this.you.x + this.you.vx, 8, W - 8);
+    this.you.y = clamp(this.you.y + this.you.vy, 8, H - 8);
     this.clampToZoneRules(this.you);
   }
 
@@ -1370,6 +1439,7 @@ export class GameEngine {
 
   // ---------- AI Movement ----------
 
+  private chaserMemo: Record<"us" | "them", Player | null> = { us: null, them: null };
   private closestOutfieldToBall(arr: Player[]): Player | null {
     let best: Player | null = null, d = 1e9;
     for (const p of arr) {
@@ -1377,6 +1447,15 @@ export class GameEngine {
       if (p.frozenTimer && p.frozenTimer > 0) continue;
       const dd = dist(p, this.ball);
       if (dd < d) { d = dd; best = p; }
+    }
+    // Sticky chaser: keep the current one unless someone is clearly closer —
+    // two near-equidistant players used to swap "chase"/"hold shape" jobs
+    // every frame and both stutter in place.
+    const side = arr[0]?.side;
+    if (side) {
+      const prev = this.chaserMemo[side];
+      if (prev && prev !== best && arr.includes(prev) && !(prev.frozenTimer && prev.frozenTimer > 0) && dist(prev, this.ball) < d + 22) best = prev;
+      this.chaserMemo[side] = best;
     }
     return best;
   }
@@ -1387,9 +1466,15 @@ export class GameEngine {
     const dir = this.attackDir(arr[0]?.side || "us");
     const side = arr[0]?.side || "us";
 
+    const start = new Map<Player, { x: number; y: number }>();
     for (const m of arr) {
       if (m === this.you || m.gk) continue;
-      if (m.frozenTimer && m.frozenTimer > 0) continue;
+      if (m.frozenTimer && m.frozenTimer > 0) { this.stopMotion(m); continue; }
+      // The intended receiver of a pass in flight is driven by receiverAttackBall —
+      // moving them here too made them lurch between two targets each frame.
+      const bl = this.ball;
+      if (bl.flying && bl.kind === "pass" && bl.targetPlayer === m) continue;
+      start.set(m, { x: m.x, y: m.y });
 
       // Restart taker holds their spot briefly after a throw-in / kick-in, so
       // they stay where they played it from instead of flashing back inside to
@@ -1422,6 +1507,7 @@ export class GameEngine {
           m.x = clamp(m.x + Math.cos(ang) * csp, L + 14, R - 14);
           m.y = clamp(m.y + Math.sin(ang) * csp, TOP + 14, BOT - 14);
           m.face = ang;
+          m.cspd = csp; m.vx = Math.cos(ang) * csp; m.vy = Math.sin(ang) * csp;
           continue;
         }
 
@@ -1463,10 +1549,9 @@ export class GameEngine {
           }
           m.evadeTimer--;
           const evade = m.evadeAng ?? Math.atan2(closestDy, closestDx);
-          m.face = evade;
-          const csp = 0.8 * this.PACE;
-          m.x += Math.cos(evade) * csp;
-          m.y += Math.sin(evade) * csp;
+          // Turn (quickly, but not instantly) and decelerate into the evade —
+          // an instant 180° flip read as the ball "teleporting" behind them.
+          this.carryStep(m, evade, 0.8 * this.PACE, 0.14);
           continue;
         }
         m.evadeTimer = 0;
@@ -1490,31 +1575,29 @@ export class GameEngine {
             // Score each dodge direction: prefer the one closer to goal direction
             const dotL = Math.cos(perpL - goalAng);
             const dotR = Math.cos(perpR - goalAng);
-            const dodgeAng = dotL > dotR ? perpL : perpR;
+            // Commit to a dodge side; only switch when the other side is clearly
+            // better (near-ties used to flip the side every frame → zig-zag).
+            let sideD = m.dodgeSide ?? (dotL > dotR ? 1 : -1);
+            if (sideD === 1 && dotR > dotL + 0.25) sideD = -1;
+            else if (sideD === -1 && dotL > dotR + 0.25) sideD = 1;
+            m.dodgeSide = sideD;
+            const dodgeAng = sideD === 1 ? perpL : perpR;
 
             // Stronger dodge when defender is closer
             const dodgeStr = clamp((80 - closestDist) / 50, 0.3, 1.0);
             ax = Math.cos(goalAng) * (1 - dodgeStr) + Math.cos(dodgeAng) * dodgeStr;
             ay = Math.sin(goalAng) * (1 - dodgeStr) + Math.sin(dodgeAng) * dodgeStr;
-          }
-        }
+          } else m.dodgeSide = undefined;
+        } else m.dodgeSide = undefined;
 
         // Turn-rate limit: steer toward the desired heading instead of snapping
         // to it. The dodge math above can flip its preferred side frame to
         // frame; without this cap that reads as a zig-zag stutter (and the ball,
         // drawn off the carrier's facing, jitters with it).
         const want = Math.atan2(ay, ax);
-        const cur = m.face ?? want;
-        let dAng = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
-        const maxTurn = 0.3 * this.PACE;
-        dAng = clamp(dAng, -maxTurn, maxTurn);
-        const head = cur + dAng;
         // Slow down when a defender is close to give more time to react/pass
         const speedMul = closestDist < 50 ? 0.7 : closestDist < 70 ? 0.85 : 1.0;
-        const csp = 2.7 * this.PACE * speedMul;
-        m.x += Math.cos(head) * csp;
-        m.y += Math.sin(head) * csp;
-        m.face = head;
+        this.carryStep(m, want, 2.7 * this.PACE * speedMul, 0.3 * this.PACE);
         continue;
       }
 
@@ -1552,18 +1635,27 @@ export class GameEngine {
           // Support runner: find space ahead of the ball toward goal
           const refx = carrier?.x ?? this.ball.x;
           const refy = carrier?.y ?? this.ball.y;
-          let best = { x: m.x, y: m.y, s: -1 };
-          for (let a = 0; a < 9; a++) {
+          const slot = (a: number) => {
             const ang = (a / 8) * Math.PI - Math.PI / 2;
             const rr = 90;
             const nx = clamp(refx + Math.sin(ang) * rr, L + 24, R - 24);
             const ny = clamp(refy + dir * Math.cos(ang) * rr, TOP + 24, BOT - 24); // AHEAD of the ball
             const sp0 = this.availability({ x: nx, y: ny, side: m.side }, carrier || m);
             const prog = m.side === "us" ? (BOT - ny) / (BOT - TOP) : (ny - TOP) / (BOT - TOP);
-            const sc = sp0 * 0.45 + prog * 0.55;
-            if (sc > best.s) best = { x: nx, y: ny, s: sc };
+            return { x: nx, y: ny, s: sp0 * 0.45 + prog * 0.55 };
+          };
+          // The chosen slot is kept (it tracks the carrier) and only re-judged
+          // every ~0.2s, switching when another slot is clearly better — the
+          // per-frame best-of-9 pick made the runner dither between two spots.
+          m.supT = (m.supT ?? 0) - 1;
+          let cur = m.supA !== undefined ? slot(m.supA) : null;
+          if (!cur || m.supT <= 0) {
+            m.supT = 12;
+            let bestA = m.supA ?? 4, bestS = -1e9;
+            for (let a = 0; a < 9; a++) { const c = slot(a); if (c.s > bestS) { bestS = c.s; bestA = a; } }
+            if (!cur || bestS > cur.s + 0.04) { m.supA = bestA; cur = slot(bestA); }
           }
-          tx = best.x; ty = best.y;
+          tx = cur.x; ty = cur.y;
         } else {
           // TACTIC ENGINE: calculate position based on active tactic preset
           const shape = m.side === "us" ? this.shapeUs : this.shapeThem;
@@ -1656,12 +1748,10 @@ export class GameEngine {
         // Box runs are sprints — the runner has to ARRIVE before the cross.
         const chaseMul = !attacking && m.side === "them" ? this.defSkill.chase : 1;
         const sp = (boxRun ? 2.6 : m === ballChaser ? (attacking ? 2.1 : 2.8) : (attacking ? 1.8 : 1.6)) * this.PACE * (backoff ? 0.5 : 1) * chaseMul;
-        const ang = Math.atan2(ty - m.y, tx - m.x);
-        const dd = Math.hypot(tx - m.x, ty - m.y);
-        if (dd > 1.5) {
-          m.x += Math.cos(ang) * Math.min(dd, sp);
-          m.y += Math.sin(ang) * Math.min(dd, sp);
-        }
+        // Pressers react fastest (and harder defenders faster still); box runs
+        // are a committed sprint; everyone else moves with natural momentum.
+        const resp = m === ballChaser ? (attacking ? 1.8 : 2.2 * Math.max(1, chaseMul)) : boxRun ? 1.6 : 1;
+        this.steer(m, tx, ty, sp, resp);
       }
 
       this.clampToRoleBounds(m);
@@ -1680,7 +1770,7 @@ export class GameEngine {
       side === "us" ? this.teamThem : this.teamUs,
       this.wingerBounds,
     );
-    teamShape.enforceSpacing(arr, spacingCtx);
+    teamShape.enforceSpacing(arr, spacingCtx, 1.4 * this.PACE);
     for (const m of arr) {
       // Skip a restart taker holding their spot — clamping to role/zone bounds
       // would drag them off the touchline back toward formation.
@@ -1689,6 +1779,14 @@ export class GameEngine {
         this.clampToRoleBounds(m);
         this.clampToZoneRules(m);
         m.x = clamp(m.x, L, R);
+      }
+      // If a bound/clamp stopped the player, bleed that velocity off so they
+      // don't keep "leaning" into the wall and then lurch when the target moves.
+      const st = start.get(m);
+      if (st && m !== this.ball.owner) {
+        const adx = m.x - st.x, ady = m.y - st.y;
+        if (m.vx !== undefined) m.vx = Math.sign(m.vx) * Math.min(Math.abs(m.vx), Math.max(0, adx * Math.sign(m.vx)));
+        if (m.vy !== undefined) m.vy = Math.sign(m.vy) * Math.min(Math.abs(m.vy), Math.max(0, ady * Math.sign(m.vy)));
       }
     }
   }
@@ -1706,6 +1804,7 @@ export class GameEngine {
     const attackers = atkSide === "us" ? this.teamUs : this.teamThem;
     let bestThreat: Player | null = null;
     let bestDanger = -1;
+    let prevMark: Player | null = null, prevDanger = -1;
 
     for (const atk of attackers) {
       if (atk.gk) continue;
@@ -1720,8 +1819,13 @@ export class GameEngine {
       const inMyLane = clamp(1 - laneDist * 2, 0, 1);
 
       const danger = goalProximity * 0.4 + inMyLane * 0.35 + (coveredByOthers ? 0 : 0.25);
+      if (atk.id === m.markId) { prevMark = atk; prevDanger = danger; }
       if (danger > bestDanger) { bestDanger = danger; bestThreat = atk; }
     }
+    // Sticky marking: keep the current man unless another is clearly more
+    // dangerous (two defenders used to swap marks back and forth).
+    if (prevMark && bestThreat !== prevMark && bestDanger < prevDanger + 0.1) bestThreat = prevMark;
+    m.markId = bestThreat?.id;
 
     if (bestThreat) {
       // Position between the threat and our goal, slightly toward the ball
@@ -1772,8 +1876,8 @@ export class GameEngine {
       ? (BOT - ballY) / (BOT - TOP)
       : (ballY - TOP) / (BOT - TOP);
 
-    // Effective fx (mirrored for "them" so all logic is from the team's own perspective)
-    const homeFx = m.side === "them" ? 1 - m.home.fx : m.home.fx;
+    // home.fx is already team-relative (formations are authored per team POV).
+    const homeFx = m.home.fx;
     const ballSide = m.side === "them"
       ? 1 - (ballX - L) / (R - L)
       : (ballX - L) / (R - L);
@@ -2630,13 +2734,11 @@ export class GameEngine {
         const targetX = this.ball.owner.x + Math.cos(this.ball.owner.face) * 12;
         const targetY = this.ball.owner.y + Math.sin(this.ball.owner.face) * 12;
         // Right after a steal, lerp the ball to the new carrier to avoid a visual pop
-        if (this.stealImmunity > 60) {
-          this.ball.x += (targetX - this.ball.x) * 0.3;
-          this.ball.y += (targetY - this.ball.y) * 0.3;
-        } else {
-          this.ball.x = targetX;
-          this.ball.y = targetY;
-        }
+        // The ball follows the carrier's feet with a slight lag, so a sharp
+        // turn rolls the ball around them instead of teleporting it.
+        const k = this.stealImmunity > 60 ? 0.3 : 0.5;
+        this.ball.x += (targetX - this.ball.x) * k;
+        this.ball.y += (targetY - this.ball.y) * k;
       }
       return;
     }
@@ -2872,9 +2974,24 @@ export class GameEngine {
       if (p === this.you) { p.px = p.x; p.py = p.y; continue; } // user facing is set by input
       const dx = p.x - (p.px ?? p.x);
       const dy = p.y - (p.py ?? p.y);
-      if (Math.hypot(dx, dy) > 0.4) p.face = Math.atan2(dy, dx);
       p.px = p.x;
       p.py = p.y;
+      if (p.gk || p === this.ball.owner) {
+        // Keepers and AI carriers set their own facing (dives; the ball rides
+        // the carrier's facing) — keep the old displacement rule for them.
+        if (Math.hypot(dx, dy) > 0.4) p.face = Math.atan2(dy, dx);
+        continue;
+      }
+      // Off-ball players face where they're running, and when standing they
+      // turn to watch the ball. Turning is rate-limited so arrows sweep instead
+      // of snapping. (Previously facing only updated above 0.4px/frame — faster
+      // than shape-holders ever move — so players slid sideways/backwards.)
+      const moving = Math.hypot(dx, dy) > 0.06;
+      if (!moving && this.gstate !== "live") continue;
+      const want = moving ? Math.atan2(dy, dx) : Math.atan2(this.ball.y - p.y, this.ball.x - p.x);
+      const cur = p.face ?? want;
+      const dA = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
+      p.face = cur + clamp(dA, -0.16, 0.16);
     }
   }
 

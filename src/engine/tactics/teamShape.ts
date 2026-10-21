@@ -88,9 +88,13 @@ export class TeamShapeEngine {
   ): Position {
     const action = this.getAction(roleKey, this.activeConditions(ctx));
     const home = player.home;
-    const dir = ctx.side === "us" ? -1 : 1;
-    // Work in team-relative coordinates (mirror for "them")
-    const homeFx = ctx.side === "them" ? 1 - home.fx : home.fx;
+    // Everything below is in TEAM-RELATIVE coordinates: fx 0 = this team's
+    // left touchline. `home.fx` is already team-relative (formations are
+    // authored from each team's own POV; homeXY mirrors for "them" only when
+    // converting to the screen). It used to be mirrored a second time here,
+    // which sent the Reds' wingers to the OPPOSITE flank (their #11 and #7
+    // swapped sides and cut across the pitch every time play restarted).
+    const homeFx = home.fx;
     const isLeft = homeFx < 0.5;
 
     let fx = homeFx;
@@ -213,7 +217,9 @@ export class TeamShapeEngine {
   }
 
   // Enforce spacing rules — push players apart if too close
-  enforceSpacing(players: Player[], ctx: ShapeContext): void {
+  // `maxPush` caps how far one pair can be shoved apart per frame, so spacing
+  // is a gentle separation instead of a visible snap.
+  enforceSpacing(players: Player[], ctx: ShapeContext, maxPush = Infinity): void {
     const { minGap, maxClusterSize, clusterRadius } = this.tactic.spacing;
 
     for (let i = 0; i < players.length; i++) {
@@ -231,7 +237,7 @@ export class TeamShapeEngine {
           const pFrozen = (p.frozenTimer && p.frozenTimer > 0) || (p.restartHoldTimer && p.restartHoldTimer > 0);
           const oFrozen = (o.frozenTimer && o.frozenTimer > 0) || (o.restartHoldTimer && o.restartHoldTimer > 0);
           if (pFrozen && oFrozen) continue;
-          const push = (minGap - d) * 0.5;
+          const push = Math.min((minGap - d) * 0.5, maxPush);
           const ang = Math.atan2(p.y - o.y, p.x - o.x);
           if (!pFrozen) {
             p.x += Math.cos(ang) * push;

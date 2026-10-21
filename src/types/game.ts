@@ -42,6 +42,26 @@ export interface Player {
   // beat so it doesn't flip with whichever defender is momentarily closest.
   evadeAng?: number;
   evadeTimer?: number;
+  // ---- Smooth steering (engine-managed) ----
+  // Velocity (px/frame): AI players accelerate / ease into spots instead of
+  // snapping speed and direction every frame.
+  vx?: number;
+  vy?: number;
+  // Low-passed movement target, so a target that hops a few px frame-to-frame
+  // doesn't make the player wobble.
+  tgx?: number;
+  tgy?: number;
+  // Carrier dribble speed (smoothed) and committed dodge side (+1 / -1).
+  cspd?: number;
+  dodgeSide?: number;
+  // Defender's current mark (player id) — sticky so marks don't flip-flop.
+  markId?: string;
+  // Support-run slot (angle index) + re-evaluation countdown.
+  supA?: number;
+  supT?: number;
+  // Shape-holder has arrived and is standing; only re-starts when the spot has
+  // moved meaningfully (stand-then-jog instead of a constant slow creep).
+  settled?: boolean;
 }
 
 export type PlayerRole =

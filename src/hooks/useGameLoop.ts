@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useEffect, useCallback } from "react";
+import { FrameDriver } from "@/engine/frameDriver";
 import { GameEngine, type EngineEvent } from "@/engine/GameEngine";
 import { renderFrame } from "@/engine/renderer";
 import type { MatchConfig } from "@/types/game";
@@ -14,6 +15,8 @@ export function useGameLoop({ canvasRef, config, onEvent }: UseGameLoopOptions) 
   const engineRef = useRef<GameEngine | null>(null);
   const rafRef = useRef<number>(0);
   const lastRef = useRef<number>(0);
+  // Fixed 60Hz simulation + interpolated rendering (see engine/frameDriver).
+  const driverRef = useRef(new FrameDriver());
 
   // Initialize engine
   useEffect(() => {
@@ -35,20 +38,18 @@ export function useGameLoop({ canvasRef, config, onEvent }: UseGameLoopOptions) 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const driver = driverRef.current;
     function loop(t: number) {
-      if (!lastRef.current) lastRef.current = t;
-      const dt = Math.min(50, t - lastRef.current);
-      lastRef.current = t;
-
-      engine!.update(dt);
-
-      // Process events
-      const events = engine!.flushEvents();
-      if (onEvent) {
-        for (const ev of events) onEvent(ev);
-      }
-
-      renderFrame(ctx!, engine!);
+      if (lastRef.current === 0) { driver.reset(); lastRef.current = 1; }
+      driver.frame(
+        t,
+        engine!,
+        () => {
+          const events = engine!.flushEvents();
+          if (onEvent) for (const ev of events) onEvent(ev as never);
+        },
+        () => renderFrame(ctx!, engine!),
+      );
       rafRef.current = requestAnimationFrame(loop);
     }
 
