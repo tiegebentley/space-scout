@@ -11,6 +11,7 @@ import { TapButton } from "@/components/ui/TapButton";
 import { clsx } from "clsx";
 import { ScenarioBoard, type ScenarioResult } from "./ScenarioBoard";
 import { ScenarioView } from "./ScenarioView";
+import { SsgView } from "@/components/ssg/SsgView";
 import { useGameStore } from "@/stores/gameStore";
 import type { Lesson } from "@/types/lessons";
 
@@ -59,7 +60,8 @@ export function LessonPlayer({ lesson, progressId }: { lesson: Lesson; progressI
   const canAdvance =
     step.kind === "explain" ||
     (step.kind === "scenario" && resolved) ||
-    (step.kind === "live-scenario" && objectiveMet);
+    (step.kind === "live-scenario" && objectiveMet) ||
+    (step.kind === "small-sided" && objectiveMet);
 
   const isLastStep = stepIdx >= total - 1;
 
@@ -233,6 +235,20 @@ export function LessonPlayer({ lesson, progressId }: { lesson: Lesson; progressI
           </div>
         )}
 
+        {step.kind === "small-sided" && (
+          <div className="bg-white rounded-2xl shadow-lg border border-[rgba(20,60,35,.08)] p-3 sm:p-4 mb-5">
+            <h2 className="font-[Fredoka] font-semibold text-lg text-[#16241c] mb-1">{step.title}</h2>
+            {step.body && <p className="text-sm font-semibold text-[#5d6f63] mb-3">{step.body}</p>}
+            <SsgView
+              key={`${stepIdx}-${runId}`}
+              initial={step.config}
+              goal={step.goal}
+              embedded
+              onGoalMet={() => setObjectiveMet(true)}
+            />
+          </div>
+        )}
+
         {step.kind === "play" && (
           <div className="bg-gradient-to-b from-[#43c46e] to-[#2B8A4E] text-white rounded-2xl shadow-lg p-6 mb-5">
             <h2 className="font-[Fredoka] font-semibold text-2xl mb-2">{step.title}</h2>
@@ -275,6 +291,7 @@ export function LessonPlayer({ lesson, progressId }: { lesson: Lesson; progressI
             >
               {step.kind === "scenario" && !resolved ? "Answer to continue…"
                 : step.kind === "live-scenario" && !objectiveMet ? "Complete the objective…"
+                : step.kind === "small-sided" && !objectiveMet ? "Reach the goal to continue…"
                 : isLastStep ? "Complete Lesson ✓" : "Next"}
             </TapButton>
           </div>

@@ -100,6 +100,12 @@ export interface Scenario {
 // Scenario objective + setup types live in game.ts (so MatchConfig can carry
 // them without a circular import); re-exported for convenience.
 export type { ScenarioObjective, ScenarioSetup } from "./game";
+import type { SsgConfig } from "@/engine/ssg/types";
+
+/** What a Rondo / Small-Sided step asks of the player before they can move on. */
+export type SsgGoal =
+  | { type: "finish" }                                  // just play the game out
+  | { type: "points" | "streak" | "winBack"; target: number };
 
 // A lesson is an ordered list of steps. Three authoring modes:
 //  - Instructional: explain cards + static graded boards ("explain" / "scenario").
@@ -117,7 +123,9 @@ export type LessonStep =
       objective: ScenarioObjective;
       scenarioSetup?: ScenarioSetup;
     }
-  | { kind: "play"; title: string; body: string; matchConfig: Partial<MatchConfig> };
+  | { kind: "play"; title: string; body: string; matchConfig: Partial<MatchConfig> }
+  // Rondo / possession game in a box (small-sided games engine).
+  | { kind: "small-sided"; title: string; body: string; config: SsgConfig; goal: SsgGoal };
 
 export interface Lesson {
   id: string;

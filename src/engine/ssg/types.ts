@@ -48,6 +48,8 @@ export interface SsgPlayer {
   cool: number;           // frames this player can't win the ball (just lost it)
   lastFrom?: string;      // who passed to me (avoid instant ping-pong)
   joining?: boolean;      // rondo: walking out to the line after a swap
+  homeX?: number;         // starting spot / shape anchor (yards)
+  homeY?: number;
 }
 
 export interface SsgBall {

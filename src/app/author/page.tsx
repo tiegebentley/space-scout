@@ -22,12 +22,17 @@ import { BUILTIN_PRESETS } from "@/data/zonePresets";
 // Jersey-number label for a role key, e.g. "hold" → "#6 Holding Mid (6)".
 const roleLabel = (r: string) => `#${JERSEY_NUMBERS[r] ?? "?"} ${ROLE_LABELS[r] ?? r}`;
 const OBJ_ROLES = ["gk", "hold", "lw", "rw", "fwd", "am", "lcb", "rcb", "lcm", "rcm"];
-import type { BoardObject, Scenario, Zone, Lesson, Choice, InfoCard, LessonStep, ScenarioObjective } from "@/types/lessons";
+import type { BoardObject, Scenario, Zone, Lesson, Choice, InfoCard, LessonStep, ScenarioObjective, SsgGoal } from "@/types/lessons";
+import type { SsgConfig } from "@/engine/ssg/types";
+import { SSG_PRESETS, sanitizeSsg, ssgSummary } from "@/engine/ssg/presets";
+import { SsgPreview } from "@/components/ssg/SsgPreview";
+import { SsgConfigForm } from "@/components/ssg/SsgConfigForm";
 import type { ZoneRule, EngineRect, ZoneCondition, ZoneMovement, ZoneAction, ZoneOffBall, ScenarioSetup } from "@/types/game";
 
 type Mode = "move" | "choice" | "arrow" | "info";
 // The three lesson modes a step can be.
-type StepKind = "instructional" | "scenario" | "game";
+type StepKind = "instructional" | "scenario" | "game" | "smallsided";
+type SsgGoalType = "finish" | "points" | "streak" | "winBack";
 type ObjType = "passCount" | "receiveInZone" | "score" | "keepPossession" | "winBack";
 
 interface DraftScenario {
@@ -69,7 +74,13 @@ interface DraftScenario {
   restartPoint: { x: number; y: number } | null; // where the forced restart is taken
   zoneRules: ZoneRule[];     // boundaries / rules for scenario & game steps
   startPositions: Record<string, { fx: number; fy: number }>; // authored player spawn overrides
+  // Rondo / Small-Sided step fields:
+  ssg: SsgConfig;
+  ssgGoalType: SsgGoalType;
+  ssgGoalTarget: number;
 }
+
+const SSG_STEP_DEFAULT = (): SsgConfig => sanitizeSsg({ ...SSG_PRESETS[1].config });
 
 let seq = 0;
 const nid = (p: string) => `${p}-${Date.now().toString(36)}-${seq++}`;
@@ -82,12 +93,13 @@ function blankScenario(kind: StepKind = "instructional"): DraftScenario {
     mode: "move", objects: [], answerIds: [], arrowId: null, zones: {}, choices: [
       { text: "", correct: true }, { text: "", correct: false },
     ], infoCards: {},
-    liveTitle: kind === "game" ? "Now play a game" : "Try it live",
+    liveTitle: kind === "game" ? "Now play a game" : kind === "smallsided" ? "Rondo: keep the ball" : "Try it live",
     liveBody: "", format: "5v5", userRole: "hold",
     oppTacticId: "possession", duration: 180000, aiDifficulty: "medium",
     forcedRestart: "", restartTeam: "us", repSeconds: 0, restartDelaySec: 5, startTrigger: "timer",
     objType: "passCount", objTarget: 5, objToRole: "gk",
     objZone: null, restartPoint: null, zoneRules: [], startPositions: {},
+    ssg: SSG_STEP_DEFAULT(), ssgGoalType: "streak", ssgGoalTarget: 6,
   };
 }
 
@@ -167,6 +179,10 @@ function draftToStep(d: DraftScenario): LessonStep {
       body: d.liveBody,
       matchConfig: { format: d.format, userRole: d.userRole, oppTacticId: d.oppTacticId, duration: d.duration, aiDifficulty: d.aiDifficulty, zoneRules: d.zoneRules, ...(sp ? { scenarioSetup: sp } : {}) },
     };
+  }
+  if (d.stepKind === "smallsided") {
+    const goal: SsgGoal = d.ssgGoalType === "finish" ? { type: "finish" } : { type: d.ssgGoalType, target: Math.max(1, d.ssgGoalTarget || 1) };
+    return { kind: "small-sided", title: d.liveTitle || "Rondo", body: d.liveBody, config: sanitizeSsg(d.ssg ?? SSG_STEP_DEFAULT()), goal };
   }
   return { kind: "scenario", scenario: toScenario(d) };
 }
@@ -274,6 +290,14 @@ function lessonToDrafts(lesson: Lesson): DraftScenario[] {
       d.zoneRules = st.matchConfig.zoneRules ?? [];
       // Play steps nest start positions in matchConfig.scenarioSetup.
       d.startPositions = st.matchConfig.scenarioSetup?.startPositions ?? {};
+      drafts.push(d);
+    }
+    else if (st.kind === "small-sided") {
+      const d = blankScenario("smallsided");
+      d.liveTitle = st.title; d.liveBody = st.body;
+      d.ssg = sanitizeSsg(st.config);
+      d.ssgGoalType = st.goal.type;
+      d.ssgGoalTarget = st.goal.type === "finish" ? 6 : st.goal.target;
       drafts.push(d);
     }
     // explain steps are skipped (the author models content via scenarios/steps)
@@ -803,13 +827,14 @@ function AuthorEditor() {
               title={s.stepKind}
               className={clsx("w-7 h-7 rounded-lg text-xs font-extrabold cursor-pointer border",
                 i === idx ? "text-white border-transparent" : "bg-white text-[#33433a] border-[rgba(20,60,35,.15)]")}
-              style={i === idx ? { backgroundColor: s.stepKind === "scenario" ? "#2E6FE0" : s.stepKind === "game" ? "#2B8A4E" : "#B07E00" } : undefined}>
+              style={i === idx ? { backgroundColor: s.stepKind === "scenario" ? "#2E6FE0" : s.stepKind === "game" ? "#2B8A4E" : s.stepKind === "smallsided" ? "#8B5CF6" : "#B07E00" } : undefined}>
               {i + 1}
             </button>
           ))}
           <button onClick={() => addScenario("instructional")} className="rounded-lg px-2 h-7 text-[11px] font-extrabold bg-[#B07E00] text-white cursor-pointer" title="Add instructional step">+ Instr</button>
           <button onClick={() => addScenario("scenario")} className="rounded-lg px-2 h-7 text-[11px] font-extrabold bg-[#2E6FE0] text-white cursor-pointer" title="Add scenario step">+ Scenario</button>
           <button onClick={() => addScenario("game")} className="rounded-lg px-2 h-7 text-[11px] font-extrabold bg-[#2B8A4E] text-white cursor-pointer" title="Add game step">+ Game</button>
+          <button onClick={() => addScenario("smallsided")} className="rounded-lg px-2 h-7 text-[11px] font-extrabold bg-[#8B5CF6] text-white cursor-pointer" title="Add a rondo / possession game step">+ Rondo</button>
           {scenarios.length > 1 && <button onClick={delScenario} className="w-7 h-7 rounded-lg text-xs bg-white border border-[rgba(20,60,35,.15)] text-[#E0463B] cursor-pointer" title="Delete step">🗑</button>}
         </div>
 
@@ -817,7 +842,7 @@ function AuthorEditor() {
         <div className="mb-4">
           <p className={GLABEL}>STEP TYPE</p>
           <div className="flex rounded-lg overflow-hidden border border-[rgba(20,60,35,.15)] text-[11px] font-extrabold mt-1">
-            {([["instructional", "Instructional"], ["scenario", "Scenario"], ["game", "Game"]] as [StepKind, string][]).map(([k, lbl]) => (
+            {([["instructional", "Instructional"], ["scenario", "Scenario"], ["game", "Game"], ["smallsided", "Rondo / SSG"]] as [StepKind, string][]).map(([k, lbl]) => (
               <button key={k} onClick={() => setStepKind(k)}
                 className={clsx("flex-1 py-2 cursor-pointer", cur.stepKind === k ? "bg-[#16241c] text-white" : "bg-white text-[#5d6f63]")}>{lbl}</button>
             ))}
@@ -825,6 +850,7 @@ function AuthorEditor() {
           <p className="text-[11px] font-semibold text-[#5d6f63] mt-1">
             {cur.stepKind === "instructional" ? "Static board — drag/tap to learn (the lab-style teaching mode)."
               : cur.stepKind === "scenario" ? "Live game with an objective to complete."
+              : cur.stepKind === "smallsided" ? "Rondo or possession game in a box — neutrals, bumpers, touch limits — with a goal to reach."
               : "Free live game to put it all together."}
           </p>
         </div>
@@ -834,8 +860,17 @@ function AuthorEditor() {
             preview of the configured match (so the field always shows). */}
         <div className="flex flex-col md:flex-row md:items-start gap-5">
           <div className="md:w-[420px] md:shrink-0 md:sticky md:top-4">
-            <p className="text-center text-[11px] font-extrabold tracking-wide text-[#5d6f63] mb-1">▲ ATTACK THIS WAY ▲</p>
-            {cur.stepKind === "instructional" ? (
+            {cur.stepKind !== "smallsided" && <p className="text-center text-[11px] font-extrabold tracking-wide text-[#5d6f63] mb-1">▲ ATTACK THIS WAY ▲</p>}
+            {cur.stepKind === "smallsided" ? (
+              <div className="rounded-2xl overflow-hidden border-2 border-[rgba(20,60,35,.12)] bg-white">
+                <SsgPreview config={sanitizeSsg(cur.ssg ?? SSG_STEP_DEFAULT())} className="w-full block aspect-square" />
+                <div className="p-3">
+                  <p className="font-[Fredoka] font-semibold text-[#16241c] leading-tight">{(cur.ssg ?? SSG_STEP_DEFAULT()).name}</p>
+                  <p className="text-[11px] font-bold text-[#2E6FE0]">{ssgSummary(sanitizeSsg(cur.ssg ?? SSG_STEP_DEFAULT()))}</p>
+                  <p className="text-[10.5px] font-bold text-[#5d6f63] mt-1">Gold ring = the player. Use “Test” to play it.</p>
+                </div>
+              </div>
+            ) : cur.stepKind === "instructional" ? (
               <AuthorBoard
                 objects={cur.objects} setObjects={setObjects}
                 answerMode={cur.mode} answerIds={cur.answerIds} arrowId={cur.arrowId}
@@ -1002,6 +1037,31 @@ function AuthorEditor() {
                     count={Object.keys(cur.startPositions).length} onReset={() => patch({ startPositions: {} })} />
                 </div>
                 {rulesGroup}
+              </>
+            )}
+
+            {/* ── RONDO / SMALL-SIDED editor ── */}
+            {cur.stepKind === "smallsided" && (
+              <>
+                <div className={GROUP}>
+                  <p className={GLABEL}>GOAL TO CONTINUE</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([["streak", "Passes in a row"], ["points", "Score points"], ["winBack", "Win it back"], ["finish", "Just play it out"]] as [SsgGoalType, string][]).map(([k, l]) => (
+                      <button key={k} onClick={() => patch({ ssgGoalType: k })}
+                        className={clsx("rounded-lg py-1.5 text-[11px] font-extrabold border cursor-pointer", cur.ssgGoalType === k ? "bg-[#16241c] text-white border-transparent" : "bg-white text-[#5d6f63] border-[rgba(20,60,35,.15)]")}>{l}</button>
+                    ))}
+                  </div>
+                  {cur.ssgGoalType !== "finish" && (
+                    <label className="flex items-center justify-between text-[12px] font-bold text-[#16241c] mt-2">
+                      {cur.ssgGoalType === "streak" ? "Passes in a row" : cur.ssgGoalType === "points" ? "Points" : "Times to win it back"}
+                      <input type="number" min={1} max={50} value={cur.ssgGoalTarget}
+                        onChange={(e) => patch({ ssgGoalTarget: Math.max(1, Math.min(50, Number(e.target.value) || 1)) })}
+                        className="w-16 rounded-md border border-[rgba(20,60,35,.15)] px-2 py-1 text-sm font-bold text-center bg-white" />
+                    </label>
+                  )}
+                  <p className="text-[10.5px] font-semibold text-[#5d6f63] mt-1.5">The player can move on once this is reached (they can keep playing).</p>
+                </div>
+                <SsgConfigForm compact presets playerOptions value={cur.ssg ?? SSG_STEP_DEFAULT()} onChange={(c) => patch({ ssg: c })} />
               </>
             )}
 

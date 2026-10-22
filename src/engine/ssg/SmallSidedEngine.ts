@@ -68,7 +68,8 @@ export class SmallSidedEngine {
   private deadTaker: SsgPlayer | null = null;
   private deadWait = 0;
   private looseFrames = 0;
-  private middleFrames = 0;   // how long YOU've been stuck in the middle (rondo)
+  private middleFrames = 0;
+  private restartIdx = 0;   // how long YOU've been stuck in the middle (rondo)
   private rolled = new Set<SsgPlayer>(); // defenders who've had their go at this pass
   private slotCount = 0;
 
@@ -183,7 +184,93 @@ export class SmallSidedEngine {
     this.poss = "A";
     this.ball = { x: starter.x, y: starter.y, vx: 0, vy: 0, owner: null, passing: false, target: null, passer: null, passFrames: 0, lastTouch: starter };
     this.giveBall(starter, true);
+    this.assignHomes();
     for (const p of this.players) p.face = Math.atan2(this.H / 2 - p.y, this.W / 2 - p.x);
+  }
+
+  // ---------- shape ----------
+  /** Spread pattern (normalized 0..1) for k players — wide and deep, no clumps. */
+  private static pattern(k: number): Array<[number, number]> {
+    const P: Record<number, Array<[number, number]>> = {
+      1: [[0.5, 0.5]],
+      2: [[0.3, 0.3], [0.7, 0.7]],
+      3: [[0.5, 0.18], [0.18, 0.72], [0.82, 0.72]],
+      4: [[0.5, 0.14], [0.14, 0.5], [0.86, 0.5], [0.5, 0.86]],
+      5: [[0.5, 0.12], [0.14, 0.38], [0.86, 0.38], [0.25, 0.85], [0.75, 0.85]],
+      6: [[0.22, 0.14], [0.78, 0.14], [0.12, 0.5], [0.88, 0.5], [0.3, 0.86], [0.7, 0.86]],
+      7: [[0.5, 0.1], [0.15, 0.3], [0.85, 0.3], [0.5, 0.5], [0.15, 0.72], [0.85, 0.72], [0.5, 0.9]],
+    };
+    return P[Math.max(1, Math.min(7, k))];
+  }
+
+  /** Give every inside player a home spot: their place in the team's shape. */
+  private assignHomes() {
+    const W = this.W, H = this.H;
+    if (this.cfg.mode === "rondo") {
+      for (const p of this.players) { p.homeX = p.x; p.homeY = p.y; }
+      return;
+    }
+    const inset = (v: number, n: number) => 0.9 + v * (n - 1.8);
+    const place = (arr: SsgPlayer[], pat: Array<[number, number]>, mirror: boolean) => {
+      arr.forEach((p, i) => {
+        const [fx, fy] = pat[i % pat.length];
+        const x = inset(mirror ? 1 - fx : fx, W), y = inset(mirror ? 1 - fy : fy, H);
+        p.homeX = x; p.homeY = y; p.x = x; p.y = y;
+      });
+    };
+    const A = this.players.filter((p) => p.side === "A" && !p.bumper);
+    const B = this.players.filter((p) => p.side === "B");
+    const N = this.players.filter((p) => p.side === "N" && !p.bumper);
+    place(A, SmallSidedEngine.pattern(A.length), false);
+    // Reds start in the gaps of the Blues' shape (rotated pattern) so nobody overlaps.
+    place(B, SmallSidedEngine.pattern(B.length).map(([x, y]) => [y, x] as [number, number]), true);
+    const nPat: Array<[number, number]> = N.length === 1 ? [[0.5, 0.5]] : N.length === 2 ? [[0.38, 0.5], [0.62, 0.5]] : [[0.5, 0.35], [0.35, 0.62], [0.65, 0.62]];
+    place(N, nPat, false);
+    for (const p of this.players) if (p.bumper) { p.homeX = p.x; p.homeY = p.y; }
+    // Nudge any accidental overlaps apart.
+    for (let k = 0; k < 20; k++) for (const a of this.players) for (const c of this.players) {
+      if (a === c || a.bumper || c.bumper) continue;
+      const d = d2(a, c);
+      if (d < 2.2) { const ux = (a.x - c.x) / (d || 1), uy = (a.y - c.y) / (d || 1); a.x = clamp(a.x + ux * 0.4, 0.8, W - 0.8); a.y = clamp(a.y + uy * 0.4, 0.8, H - 0.8); a.homeX = a.x; a.homeY = a.y; }
+    }
+  }
+
+  /** Rondo restart: everyone back to their starting spots, defenders in the middle. */
+  private resetRondo(prefer?: SsgPlayer | null) {
+    const reds = this.players.filter((p) => p.side === "B");
+    reds.forEach((p, i) => {
+      const a = (i / Math.max(1, reds.length)) * Math.PI * 2 + Math.PI / 4;
+      const r = reds.length > 1 ? 1.6 : 0;
+      p.x = this.W / 2 + Math.cos(a) * r; p.y = this.H / 2 + Math.sin(a) * r;
+    });
+    for (const p of this.players) {
+      if (p.side === "A" && p.slot !== undefined) {
+        const pt = this.perimPoint(this.slotHomeT(p.slot));
+        if (this.cfg.perimeter) { p.x = pt.x; p.y = pt.y; }
+        else { p.x = clamp(pt.x + (this.W / 2 - pt.x) * 0.1, 0.6, this.W - 0.6); p.y = clamp(pt.y + (this.H / 2 - pt.y) * 0.1, 0.6, this.H - 0.6); }
+      } else if (p.side === "N" && !p.bumper && p.homeX !== undefined) { p.x = p.homeX; p.y = p.homeY!; }
+      else if (p.bumper && p.edge !== undefined) { const ln = this.edgeLine(p.edge); p.x = (ln.ax + ln.bx) / 2; p.y = (ln.ay + ln.by) / 2; }
+      p.vx = 0; p.vy = 0; p.tgx = undefined; p.tgy = undefined; p.settled = false;
+      p.spotX = undefined; p.spotY = undefined; p.joining = false; p.hold = 0; p.evalT = 0;
+      p.cool = p.side === "B" ? Math.round(0.6 * HZ) : 0;
+      p.face = Math.atan2(this.H / 2 - p.y, this.W / 2 - p.x);
+    }
+    // Restart from an outside player (an AI if possible, rotating around the box).
+    const outs = this.players.filter((p) => p.side === "A");
+    const ai = outs.filter((p) => !p.isUser);
+    const pool = ai.length ? ai : outs;
+    this.restartIdx = (this.restartIdx + 1) % Math.max(1, pool.length);
+    const taker = prefer && outs.includes(prefer) && !prefer.isUser ? prefer : pool[this.restartIdx] ?? outs[0];
+    this.poss = "A";
+    this.lanes.clear();
+    this.presser = null;
+    this.looseFrames = 0;
+    const b = this.ball;
+    b.passing = false; b.target = null; b.passer = null; b.vx = 0; b.vy = 0; b.deadX = undefined; b.deadY = undefined;
+    if (taker) { b.x = taker.x; b.y = taker.y; this.giveBall(taker, true); taker.immune = Math.round(1.2 * HZ); }
+    this.deadTaker = null;
+    this.dead = Math.round(1.0 * HZ);
+    this.events.push({ type: "stats" });
   }
 
   start() {
@@ -274,8 +361,7 @@ export class SmallSidedEngine {
     out.side = "B"; out.slot = undefined; out.spotX = undefined; out.cool = Math.round(1.6 * HZ);
     u.side = "A"; u.slot = slot; u.spotX = undefined; u.joining = this.cfg.perimeter;
     this.pill(`Time's up in the middle — #${out.number} swaps in`, "info");
-    this.lanes.clear();
-    this.events.push({ type: "stats" });
+    this.resetRondo();
   }
 
   private endGame() {
@@ -463,6 +549,8 @@ export class SmallSidedEngine {
         this.steer(p, b.deadX, b.deadY!, this.sp(5.2), 2);
         continue;
       }
+      // Rondo restart pause: defenders wait in the middle until play is live.
+      if (this.dead > 0 && this.cfg.mode === "rondo" && p.side === "B") { this.steer(p, p.x, p.y, this.sp(2), 1.5); continue; }
       if (p.side !== "N" && p.side !== this.poss) this.aiDefend(p);
       else this.aiSupport(p);
     }
@@ -477,7 +565,8 @@ export class SmallSidedEngine {
     }
     const same = this.players.filter((q) => !q.bumper && (p.side === "N" ? q.side === "N" : q.side === p.side));
     same.sort((a, c) => d2(a, b) - d2(c, b));
-    return same.indexOf(p) < (p.side === "N" ? 1 : 2);
+    // Only the nearest player per side goes for a loose ball; the rest hold shape.
+    return same.indexOf(p) === 0;
   }
 
   private aiCarrier(p: SsgPlayer) {
@@ -545,6 +634,15 @@ export class SmallSidedEngine {
       } else if (p.bumper && p.edge !== undefined) {
         const ln = this.edgeLine(p.edge);
         for (let i = 0; i <= 8; i++) cands.push({ x: ln.ax + ((ln.bx - ln.ax) * i) / 8, y: ln.ay + ((ln.by - ln.ay) * i) / 8 });
+      } else if (this.cfg.mode === "possession" && p.homeX !== undefined) {
+        // Stay in your part of the shape: explore around your home spot, shifted
+        // a little toward the ball — the team keeps the box BIG instead of
+        // everyone drifting to the ball.
+        const hx = p.homeX + (ref.x - p.homeX) * 0.22, hy = p.homeY! + (ref.y - p.homeY!) * 0.22;
+        const R = Math.max(3.5, Math.min(this.W, this.H) * 0.3);
+        for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) {
+          cands.push({ x: clamp(hx + (i / 2) * R, 0.8, this.W - 0.8), y: clamp(hy + (j / 2) * R, 0.8, this.H - 0.8) });
+        }
       } else {
         const nx = 6, ny = 6;
         for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
@@ -558,7 +656,7 @@ export class SmallSidedEngine {
       for (const c of cands) {
         let lane = 1e9, open = 1e9, space = 1e9;
         for (const o of opps) { lane = Math.min(lane, segDist(o.x, o.y, ref.x, ref.y, c.x, c.y)); open = Math.min(open, d2(o, c)); }
-        for (const m of mates) if (m !== b.owner) space = Math.min(space, d2(m, c));
+        for (const m of mates) space = Math.min(space, d2(m, c));
         const dRef = d2(ref, c);
         let s = clamp((lane - 0.8) / 2.5, 0, 1) * 0.45
           + clamp((open - 1) / 5, 0, 1) * 0.25
@@ -566,6 +664,11 @@ export class SmallSidedEngine {
           + clamp(1 - Math.abs(dRef - 7) / 9, 0, 1) * 0.15
           - (d2(p, c) / diag) * 0.3;
         if (dRef < 2) s -= 0.5;
+        if (this.cfg.mode === "possession") {
+          if (space < 3) s -= (3 - space) * 0.25;       // never stand on a teammate
+          if (dRef < 3.5) s -= (3.5 - dRef) * 0.12;     // don't crowd the ball
+          if (p.homeX !== undefined) s -= (Math.hypot(c.x - p.homeX, c.y - p.homeY!) / diag) * 0.35; // keep shape
+        }
         // Outside players keep their side of the box (no camping in corners).
         if (this.onPerimeter(p)) s -= (Math.abs(this.perimT(c.x, c.y) - this.perimT(...Object.values(this.perimPoint(this.slotHomeT(p.slot!))) as [number, number])) / this.P) * 0.6;
         if (p.spotX !== undefined && c.x === p.spotX && c.y === p.spotY) s += 0.07; // stickiness
@@ -608,6 +711,29 @@ export class SmallSidedEngine {
     if (!carrier) return;
     const opts = this.passOptions(carrier).slice(0, 4);
     const free = ai.filter((p) => p !== pr);
+    if (this.cfg.mode === "possession") {
+      // One cuts the most dangerous lane; everyone else picks up a DIFFERENT
+      // man (nearest free receiver), sitting on the passing line just off them.
+      const receivers = this.players.filter((q) => q !== carrier && this.onBall(q) && !q.bumper);
+      const taken = new Set<SsgPlayer>();
+      if (opts[0] && free.length) {
+        const o = opts[0];
+        free.sort((a, c) => segDist(a.x, a.y, carrier.x, carrier.y, o.lx, o.ly) - segDist(c.x, c.y, carrier.x, carrier.y, o.lx, o.ly));
+        const d = free.shift()!;
+        taken.add(o.p);
+        this.lanes.set(d, { x: carrier.x + (o.lx - carrier.x) * 0.5, y: carrier.y + (o.ly - carrier.y) * 0.5 });
+      }
+      for (const d of free) {
+        let best: SsgPlayer | null = null, bd = 1e9;
+        for (const r of receivers) { if (taken.has(r)) continue; const dd = d2(d, r); if (dd < bd) { bd = dd; best = r; } }
+        if (!best) continue;
+        taken.add(best);
+        const dx = carrier.x - best.x, dy = carrier.y - best.y, dl = hyp(dx, dy) || 1;
+        const off = Math.min(1.8, dl * 0.35);
+        this.lanes.set(d, { x: best.x + (dx / dl) * off, y: best.y + (dy / dl) * off });
+      }
+      return;
+    }
     // Greedy: each remaining defender cuts the most dangerous lane they're nearest to.
     const used = new Set<SsgPlayer>();
     for (const o of opts) {
@@ -652,6 +778,10 @@ export class SmallSidedEngine {
     if (lane) { this.steer(p, lane.x, lane.y, press * 0.9, 1.6); return; }
     // Fallback: compact toward the ball, between it and the middle.
     const bp = b.owner ?? b;
+    if (this.cfg.mode === "possession" && p.homeX !== undefined) {
+      this.steer(p, p.homeX + (bp.x - p.homeX) * 0.45, p.homeY! + (bp.y - p.homeY!) * 0.45, press * 0.8, 1.2);
+      return;
+    }
     this.steer(p, (bp.x * 0.6 + (this.W / 2) * 0.4), (bp.y * 0.6 + (this.H / 2) * 0.4), press * 0.8, 1.2);
   }
 
@@ -874,25 +1004,10 @@ export class SmallSidedEngine {
         if (bLoser.isUser) this.pill("You lost it — your turn in the middle!", "bad");
         else if (red.isUser) this.pill("You won it — back on the outside!", "good");
         else this.pill(`Swap! #${bLoser.number} goes in the middle`, "info");
-        this.poss = "A";
-        // Restart cleanly: the new outside player walks out to the vacated slot
-        // (no teleport), the new defender jogs into the middle, and play
-        // restarts from the outside player furthest from the defenders.
-        this.lanes.clear();
-        const reds = this.players.filter((q) => q.side === "B");
-        const outs = this.players.filter((q) => q.side === "A" && q !== red && !q.joining);
-        const far = (q: SsgPlayer) => Math.min(...reds.map((r2) => d2(r2, q)), 99);
-        outs.sort((a, c) => far(c) - far(a));
-        const taker = outs.find((q) => !q.isUser) ?? outs[0] ?? red;
-        this.setDead(taker, taker.x, taker.y);
-        this.dead = Math.round(1.3 * HZ);
-      } else {
-        // No swap: ball back to an outside player.
-        const outs = this.players.filter((p) => p.side === "A");
-        const to = outs.sort((a, c) => d2(c, this.centre) - d2(a, this.centre))[0];
-        this.poss = "A";
-        if (to) this.setDead(to, to.x, to.y);
+        bLoser.cool = 0; red.joining = false;
       }
+      // Every rondo restart is clean: back to the starting spots.
+      this.resetRondo();
       return;
     }
 
@@ -928,7 +1043,7 @@ export class SmallSidedEngine {
     const ps = this.players;
     for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
       const a = ps[i], c = ps[j];
-      const min = a.side === c.side ? 1.5 : 1.0;
+      const min = a.side === c.side ? (this.cfg.mode === "possession" ? 2.2 : 1.5) : 1.0;
       const dx = c.x - a.x, dy = c.y - a.y, d = hyp(dx, dy);
       if (d >= min || d === 0) continue;
       const push = Math.min((min - d) * 0.5, 0.05);

@@ -11,6 +11,21 @@ import { FrameDriver } from "@/engine/frameDriver";
 import { Joystick } from "@/components/game/Joystick";
 import { TapButton } from "@/components/ui/TapButton";
 import { loadBest, recordBest, type SsgBest } from "@/lib/ssgLocal";
+import type { SsgGoal } from "@/types/lessons";
+
+/** Goal text + current progress for a lesson step. */
+export function goalLabel(g: SsgGoal, rondo: boolean): string {
+  if (g.type === "finish") return "Play the game to the end";
+  if (g.type === "points") return `Score ${g.target} point${g.target === 1 ? "" : "s"}`;
+  if (g.type === "streak") return `Make ${g.target} passes in a row`;
+  return `Win the ball back ${g.target} time${g.target === 1 ? "" : "s"}${rondo ? " in the middle" : ""}`;
+}
+function goalProgress(g: SsgGoal, e: SmallSidedEngine): number {
+  if (g.type === "points") return e.stats.points[e.cfg.userTeam];
+  if (g.type === "streak") return e.stats.best;
+  if (g.type === "winBack") return e.stats.userWon;
+  return 0;
+}
 
 type Hud = { streak: number; best: number; ptsA: number; ptsB: number; wins: number; clock: string; poss: "A" | "B"; youSide: "A" | "B" | "N" };
 type Pill = { id: number; text: string; tone: "good" | "bad" | "info" };
@@ -20,7 +35,15 @@ function fmt(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: string }) {
+export function SsgView({ initial, editHref, goal, onGoalMet, embedded }: {
+  initial: SsgConfig;
+  editHref?: string;
+  /** Lesson mode: a goal to reach (the Next button unlocks via onGoalMet). */
+  goal?: SsgGoal;
+  onGoalMet?: () => void;
+  /** Inside a lesson: no "← Games" link, settings fixed by the author. */
+  embedded?: boolean;
+}) {
   const [cfg, setCfg] = useState<SsgConfig>(initial);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<SmallSidedEngine | null>(null);
@@ -32,6 +55,9 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
   const [pills, setPills] = useState<Pill[]>([]);
   const [result, setResult] = useState<{ stats: SmallSidedEngine["stats"]; newBest: boolean; prev: SsgBest | null } | null>(null);
   const pillId = useRef(0);
+  const goalDone = useRef(false);
+  const [goalNow, setGoalNow] = useState(0);
+  const [goalMet, setGoalMet] = useState(false);
   const rondo = cfg.mode === "rondo";
 
   // (Re)build the engine whenever the setup changes before kick-off.
@@ -56,7 +82,8 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
     const newBest = recordBest(cfg, { streak: e.stats.best, points: yourPts });
     setResult({ stats: { ...e.stats }, newBest, prev });
     setPhase("end");
-  }, [cfg]);
+    if (goal?.type === "finish" && !goalDone.current) { goalDone.current = true; setGoalMet(true); onGoalMet?.(); }
+  }, [cfg, goal, onGoalMet]);
 
   // Game loop (fixed 60Hz sim + interpolated render).
   useEffect(() => {
@@ -76,6 +103,15 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
             const next: Hud = { streak: s.streak, best: s.best, ptsA: s.points.A, ptsB: s.points.B, wins: s.wins, clock: fmt(e.timeLeft), poss: e.poss, youSide: e.user.side };
             setHud((h) => (JSON.stringify(h) === JSON.stringify(next) ? h : next));
             setCanPass((c) => (c === e.canPass ? c : e.canPass));
+            if (goal && goal.type !== "finish") {
+              const g = goalProgress(goal, e);
+              setGoalNow((v) => (v === g ? v : g));
+              if (!goalDone.current && g >= goal.target) {
+                goalDone.current = true; setGoalMet(true);
+                pushPill("Goal complete! ✓", "good");
+                onGoalMet?.();
+              }
+            }
           }
         }, () => renderSsg(ctx, e));
       }
@@ -125,10 +161,14 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
   const inMiddle = rondo && hud.youSide === "B";
 
   return (
-    <div className="w-full max-w-[560px] mx-auto flex flex-col">
+    <div className="relative w-full max-w-[560px] mx-auto flex flex-col">
       {/* Header */}
       <header className="flex items-center justify-between gap-2 px-3 py-2 rounded-t-3xl bg-gradient-to-r from-[#1F6E3D] to-[#2B8A4E] text-white">
-        <Link href="/games" className="shrink-0 rounded-[10px] bg-white/[.18] border border-white/[.3] font-[Fredoka] font-bold text-sm px-3 h-[34px] flex items-center">← Games</Link>
+        {embedded ? (
+          <span className="shrink-0 rounded-[10px] bg-white/[.18] border border-white/[.3] font-[Fredoka] font-bold text-[11px] px-2.5 h-[34px] flex items-center">{rondo ? "RONDO" : "POSSESSION"}</span>
+        ) : (
+          <Link href="/games" className="shrink-0 rounded-[10px] bg-white/[.18] border border-white/[.3] font-[Fredoka] font-bold text-sm px-3 h-[34px] flex items-center">← Games</Link>
+        )}
         <div className="min-w-0 text-center">
           <p className="font-[Fredoka] font-semibold text-[15px] leading-tight truncate">{cfg.name}</p>
           <p className="text-[10px] font-bold opacity-85 tracking-wide truncate">{ssgSummary(cfg).toUpperCase()}</p>
@@ -158,6 +198,14 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
           </>
         )}
       </div>
+
+      {goal && (
+        <div className={clsx("flex items-center justify-between gap-2 px-3 py-1.5 text-[12px] font-extrabold border-x border-[rgba(20,60,35,.08)]",
+          goalMet ? "bg-[#eafaef] text-[#1F6E3D]" : "bg-[#fff8e1] text-[#7a5a00]")}>
+          <span>🎯 {goalLabel(goal, rondo)}</span>
+          <span className="tabular-nums">{goalMet ? "✓ Done" : goal.type === "finish" ? "" : `${Math.min(goalNow, goal.target)}/${goal.target}`}</span>
+        </div>
+      )}
 
       {/* Field */}
       <div className="relative bg-[#226f3f] p-2">
@@ -206,7 +254,7 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
 
       {/* Setup overlay */}
       {phase === "setup" && (
-        <Overlay>
+        <Overlay inline={embedded}>
           <h2 className="font-[Fredoka] font-semibold text-[24px] leading-tight">{cfg.name}</h2>
           <p className="text-[12px] font-bold opacity-80 mt-0.5">{ssgSummary(cfg)}</p>
           <ul className="text-left text-[13px] font-semibold leading-snug mt-4 flex flex-col gap-1.5 opacity-95">
@@ -227,6 +275,8 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
             <li>• Move with the joystick. <b>Pass</b> hits who you&apos;re facing (dashed line), or <b>tap a teammate</b>.</li>
           </ul>
 
+          {goal && <p className="mt-4 rounded-xl bg-[#FFC531] text-[#16241c] px-3 py-2 text-[13px] font-extrabold">🎯 Goal: {goalLabel(goal, rondo)}</p>}
+          {!embedded && <>
           <Choice label={rondo ? "YOU START" : "YOU PLAY FOR"} value={cfg.userTeam} onChange={(v) => set("userTeam", v as "A" | "B")}
             options={rondo ? [["A", "On the outside"], ["B", "In the middle"]] : [["A", "Blues"], ["B", "Reds"]]} />
           <Choice label={rondo && cfg.userTeam === "A" ? "DEFENDER DIFFICULTY" : "OPPONENT DIFFICULTY"} value={cfg.difficulty} onChange={(v) => set("difficulty", v as SsgDifficulty)}
@@ -235,6 +285,11 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
             options={[["0", "Free"], ["2", "2-touch"], ["1", "1-touch"]]} />
           <Choice label="GAME SPEED" value={String(cfg.speed)} onChange={(v) => set("speed", Number(v))}
             options={[["0.8", "Slow"], ["1", "Normal"], ["1.2", "Fast"]]} />
+          </>}
+          {embedded && (
+            <Choice label="GAME SPEED" value={String(cfg.speed)} onChange={(v) => set("speed", Number(v))}
+              options={[["0.8", "Slow"], ["1", "Normal"], ["1.2", "Fast"]]} />
+          )}
 
           <TapButton onTap={start} className="btn-primary mt-6 w-full">Start</TapButton>
           {editHref && <Link href={editHref} className="block mt-3 text-[12px] font-extrabold underline opacity-85">Edit this game</Link>}
@@ -242,7 +297,7 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
       )}
 
       {paused && phase === "play" && (
-        <Overlay>
+        <Overlay inline={embedded}>
           <h2 className="font-[Fredoka] font-semibold text-[24px]">Paused</h2>
           <p className="text-[13px] font-semibold opacity-90 mt-2">Look up before the ball arrives — where&apos;s your next pass?</p>
           <TapButton onTap={togglePause} className="btn-primary mt-5 w-full">Resume</TapButton>
@@ -251,7 +306,7 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
       )}
 
       {phase === "end" && result && (
-        <Overlay>
+        <Overlay inline={embedded}>
           <h2 className="font-[Fredoka] font-semibold text-[26px]">Time!</h2>
           {result.newBest && <p className="inline-block mt-1 px-3 py-1 rounded-full bg-[#FFC531] text-[#16241c] text-[12px] font-extrabold">New personal best!</p>}
           <p className="text-[13px] font-semibold opacity-90 mt-2">
@@ -271,9 +326,16 @@ export function SsgView({ initial, editHref }: { initial: SsgConfig; editHref?: 
             <ResultStat label="You won it" value={String(result.stats.userWon)} />
           </div>
           {result.prev && <p className="text-[11px] font-bold opacity-75 mt-3">Previous best run: {result.prev.streak} passes</p>}
+          {goal && (
+            <p className={clsx("mt-3 rounded-xl px-3 py-2 text-[13px] font-extrabold", goalMet ? "bg-[#7CF29A] text-[#0b3d1d]" : "bg-white/15")}>
+              {goalMet ? `🎯 Goal complete — tap Next below the game to continue.` : `🎯 Goal not reached yet: ${goalLabel(goal, rondo)}. Try again!`}
+            </p>
+          )}
           <TapButton onTap={start} className="btn-primary mt-5 w-full">Play again</TapButton>
           <TapButton onTap={() => { setPhase("setup"); build(cfg); }} className="mt-3 w-full rounded-xl bg-white/15 font-bold text-sm py-2.5">Change settings</TapButton>
-          <Link href="/games" className="block mt-3 text-[12px] font-extrabold underline opacity-85">Back to games</Link>
+          {embedded
+            ? <TapButton onTap={() => setPhase("setup")} className="mt-3 w-full rounded-xl bg-white/15 font-bold text-sm py-2.5">Close</TapButton>
+            : <Link href="/games" className="block mt-3 text-[12px] font-extrabold underline opacity-85">Back to games</Link>}
         </Overlay>
       )}
     </div>
@@ -315,9 +377,12 @@ function Choice({ label, value, onChange, options }: { label: string; value: str
   );
 }
 
-function Overlay({ children }: { children: React.ReactNode }) {
+function Overlay({ children, inline }: { children: React.ReactNode; inline?: boolean }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-[#123d24]/95 backdrop-blur-sm text-white text-center px-4 pt-[max(env(safe-area-inset-top),20px)] pb-[max(env(safe-area-inset-bottom),20px)]">
+    <div className={clsx(
+      "flex items-start justify-center overflow-y-auto overscroll-contain bg-[#123d24]/95 backdrop-blur-sm text-white text-center px-4",
+      inline ? "absolute inset-0 z-30 rounded-3xl py-4" : "fixed inset-0 z-50 pt-[max(env(safe-area-inset-top),20px)] pb-[max(env(safe-area-inset-bottom),20px)]"
+    )}>
       <div className="bg-white/[.08] border border-white/[.2] rounded-2xl p-5 sm:p-6 max-w-[420px] w-full my-auto">{children}</div>
     </div>
   );
